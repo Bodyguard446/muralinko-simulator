@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Muralinko — Simulateur de rendu</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --midnight: #004756;
+  --white: #FFFFFF;
+  --mint: #00C78F;
+  --ming: #336C78;
+  --shamrock: #33D2A5;
+  --gothic: #66919A;
+  --geyser: #CCDADD;
+  --mystic: #E5EDEE;
+  --off-green: #E5F9F4;
+  --text: #1a3a42;
+  --radius: 10px;
+  --shadow: 0 2px 16px rgba(0,71,86,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,71,86,0.12);
+  --ease: 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  font-weight: 300;
+  background: var(--white);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
+
+/* ─── Header ─── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 32px;
+  background: var(--midnight);
+}
+.logo { font-size: 1.6rem; font-weight: 800; color: var(--white); letter-spacing: 3px; text-transform: uppercase; }
+.header-sub { font-size: 0.8rem; color: var(--mint); letter-spacing: 1px; font-weight: 400; }
+
+/* ─── Steps indicator ─── */
+.steps-bar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 20px 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.step-dot {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.82rem; font-weight: 500; color: var(--geyser);
+  transition: color var(--ease);
+}
+.step-dot.active { color: var(--midnight); }
+.step-dot.done { color: var(--mint); }
+.step-dot .num {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700;
+  background: var(--mystic); color: var(--gothic);
+  transition: all var(--ease);
+}
+.step-dot.active .num { background: var(--midnight); color: var(--white); }
+.step-dot.done .num { background: var(--mint); color: var(--white); }
+.step-line {
+  flex: 1; height: 2px; background: var(--mystic);
+  margin: 0 4px; align-self: center;
+  min-width: 24px; max-width: 60px;
+}
+.step-line.done { background: var(--mint); }
+
+/* ─── Panels ─── */
+.panel {
+  display: none;
+  max-width: 580px;
+  margin: 0 auto;
+  padding: 8px 24px 40px;
+  animation: fadeUp 0.4s ease;
+}
+.panel.active { display: block; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+.panel-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.panel-desc {
+  font-size: 0.9rem;
+  color: var(--gothic);
+  margin-bottom: 24px;
+}
+
+/* ─── Upload zone ─── */
+.upload-zone {
+  border: 2px dashed var(--geyser);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--ease);
+  background: var(--mystic);
+  position: relative;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--mint);
+  background: var(--off-green);
+}
+.upload-zone.has-file {
+  border-style: solid;
+  border-color: var(--mint);
+  background: var(--off-green);
+  padding: 16px;
+}
+.upload-zone .icon {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+  display: block;
+  opacity: 0.5;
+}
+.upload-zone .label {
+  font-size: 0.95rem;
+  color: var(--midnight);
+  font-weight: 500;
+}
+.upload-zone .hint {
+  font-size: 0.78rem;
+  color: var(--gothic);
+  margin-top: 4px;
+}
+.upload-zone img.preview {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* Loading spinner */
+.upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 30px 0;
+}
+.upload-loading p {
+  font-size: 0.9rem;
+  color: var(--gothic);
+  font-weight: 400;
+}
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--geyser);
+  border-top-color: var(--mint);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Tips ─── */
+.tips {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tip {
+  font-size: 0.8rem;
+  color: var(--gothic);
+  padding-left: 16px;
+  position: relative;
+}
+.tip::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 7px;
+  width: 6px; height: 6px;
+  background: var(--mint);
+  border-radius: 50%;
+}
+
+/* ─── Inputs ─── */
+.field { margin-top: 20px; }
+.field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--midnight);
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--geyser);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--midnight);
+  outline: none;
+  transition: border-color var(--ease);
+}
+.field input:focus { border-color: var(--mint); }
+.field-row {
+  display: flex; gap: 16px;
+}
+.field-row .field { flex: 1; }
+
+/* ─── Checkboxes ─── */
+.checks { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.check {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.88rem; color: var(--midnight); font-weight: 400;
+  cursor: pointer; user-select: none;
+}
+.check input { width: 18px; height: 18px; accent-color: var(--mint); cursor: pointer; }
+
+/* Warnings & highlights */
+.warn {
+  background: #FFF4E5; border: 1px solid #F5B86C; color: #7A4A0E;
+  padding: 10px 12px; border-radius: 8px; font-size: 0.78rem;
+  margin-top: 10px; line-height: 1.5;
+}
+.badge-max {
+  display: inline-block; background: var(--mint); color: #000;
+  font-size: 0.68rem; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ─── Wall calibrator ─── */
+.wall-calibrator { margin-top: 20px; }
+.calib-help { font-size: 0.85rem; color: var(--gothic); margin-bottom: 12px; line-height: 1.5; }
+.calib-stage {
+  position: relative;
+  user-select: none;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--mystic);
+  box-shadow: var(--shadow);
+  touch-action: none;
+}
+.calib-stage img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-drag: none; }
+.calib-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.calib-svg polygon { fill: rgba(0, 199, 143, 0.06); stroke: var(--mint); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 4 3; }
+.corner-handle {
+  position: absolute; width: 14px; height: 14px;
+  background: var(--mint); border: 2px solid #fff;
+  border-radius: 50%; cursor: grab;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  touch-action: none;
+  z-index: 2;
+}
+.corner-handle:hover { background: var(--shamrock); width: 18px; height: 18px; }
+.corner-handle.dragging { cursor: grabbing; transform: translate(-50%, -50%) scale(1.25); z-index: 3; }
+.corner-label {
+  position: absolute;
+  background: rgba(0,71,86,0.8); color: #fff;
+  font-size: 0.62rem; padding: 2px 6px; border-radius: 3px;
+  pointer-events: none;
+  transform: translate(-50%, -160%);
+  white-space: nowrap;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.corner-handle:hover .corner-label,
+.corner-handle.dragging .corner-label { opacity: 1; }
+
+/* ─── Preview stage (perspective rendering) ─── */
+.preview-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+.preview-stage img.wall-img {
+  display: block; width: 100%; height: auto;
+  pointer-events: none; -webkit-user-drag: none;
+}
+.preview-stage img.design-img {
+  position: absolute; top: 0; left: 0;
+  transform-origin: 0 0;
+  mix-blend-mode: multiply;
+  cursor: grab;
+  -webkit-user-drag: none;
+  pointer-events: auto;
+  will-change: transform;
+}
+.preview-stage img.design-img.dragging { cursor: grabbing; }
+.preview-stage svg.zone-overlay {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
+.preview-stage svg.zone-overlay polygon.printable {
+  fill: none; stroke: rgba(0, 199, 143, 0.7); stroke-width: 1.5; stroke-dasharray: 5 4;
+}
+.preview-stage svg.zone-overlay g.ruler line { stroke: rgba(255,255,255,0.95); stroke-width: 0.25; }
+.preview-stage svg.zone-overlay g.ruler text { fill: #fff; font: 500 2px Inter, sans-serif; }
+
+/* Magnifier */
+.magnifier {
+  position: absolute;
+  width: 90px; height: 90px;
+  border: 2px solid var(--mint);
+  border-radius: 50%;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 10;
+  display: none;
+}
+.magnifier::before, .magnifier::after {
+  content:''; position:absolute; background: rgba(0,71,86,0.6);
+}
+.magnifier::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.magnifier::after  { top: 50%; left: 0; height: 1px; width: 100%; }
+
+/* Toggle button row */
+.toggle-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.toggle-row .btn { flex: 1; font-size: 0.78rem; padding: 8px 6px; }
+.toggle-row .btn.active { background: var(--midnight); color: #fff; border-color: var(--midnight); }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 28px;
+  border: none;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.btn-mint {
+  background: var(--mint);
+  color: #000;
+}
+.btn-mint:hover { background: var(--shamrock); }
+.btn-mint:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-outline {
+  background: transparent;
+  color: var(--midnight);
+  border: 1.5px solid var(--geyser);
+}
+.btn-outline:hover { border-color: var(--mint); color: var(--mint); }
+.btn-block { width: 100%; }
+.btn-lg { padding: 14px 32px; font-size: 1.05rem; }
+
+.actions-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 28px;
+}
+.actions-row .btn { flex: 1; }
+
+/* ─── Preview layout ─── */
+.preview-layout {
+  display: none;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 24px 40px;
+  gap: 28px;
+  animation: fadeUp 0.4s ease;
+}
+.preview-layout.active {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+}
+
+.canvas-wrap {
+  position: relative;
+  background: var(--mystic);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: grab;
+}
+.canvas-wrap canvas:active { cursor: grabbing; }
+
+.canvas-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(229, 237, 238, 0.92);
+  z-index: 10;
+  transition: opacity 0.4s ease;
+}
+.canvas-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.canvas-loader p {
+  font-size: 0.95rem;
+  color: var(--midnight);
+  font-weight: 500;
+}
+
+.canvas-tooltip {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,71,86,0.7);
+  color: var(--white);
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 6px 16px;
+  border-radius: 20px;
+  pointer-events: none;
+  transition: opacity 0.6s;
+}
+.canvas-tooltip.hidden { opacity: 0; }
+
+/* ─── Sidebar ─── */
+.sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+.card {
+  background: var(--white);
+  border: 1px solid var(--mystic);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--midnight);
+  margin-bottom: 14px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 0.88rem;
+}
+.info-row .label { color: var(--gothic); font-weight: 400; }
+.info-row .value { font-weight: 600; color: var(--midnight); }
+
+.card-note {
+  font-size: 0.76rem;
+  color: var(--gothic);
+  font-style: italic;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+.card-adjust-note {
+  font-size: 0.72rem;
+  color: var(--gothic);
+  margin-top: 6px;
+}
+
+.card .btn { margin-top: 8px; }
+.card .btn:first-of-type { margin-top: 0; }
+
+.divider { height: 1px; background: var(--mystic); margin: 10px 0; }
+
+/* CTA section */
+.cta-card {
+  background: var(--off-green);
+  border: 1.5px solid var(--mint);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+}
+.cta-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.cta-card .btn { margin-bottom: 6px; }
+.cta-card .small {
+  font-size: 0.72rem;
+  color: var(--gothic);
+}
+
+/* ─── Footer ─── */
+.footer {
+  height: 3px;
+  background: linear-gradient(90deg, var(--midnight), var(--mint));
+  margin-top: auto;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .header { padding: 12px 16px; }
+  .logo { font-size: 1.2rem; }
+  .panel { padding: 8px 16px 32px; }
+  .preview-layout.active {
+    grid-template-columns: 1fr;
+  }
+  .sidebar { margin-top: 8px; }
+  .field-row { flex-direction: column; gap: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div>
+    <div class="logo">Muralinko</div>
+    <div class="header-sub">Simulateur de rendu</div>
+  </div>
+</header>
+
+<!-- Steps indicator -->
+<nav class="steps-bar" id="stepsBar">
+  <div class="step-dot active" data-step="1"><span class="num">1</span> Votre mur</div>
+  <div class="step-line"></div>
+  <div class="step-dot" data-step="2"><span class="num">2</span> Votre design</div>
+  <div class="step-line"></div>
+  <div class="step-dot" data-step="3"><span class="num">3</span> Votre apercu</div>
+</nav>
+
+<!-- ═══ Step 1: Wall ═══ -->
+<section class="panel active" id="step1">
+  <h2 class="panel-title">Votre mur</h2>
+  <p class="panel-desc">Prenez une photo de votre mur et importez-la ici.</p>
+
+  <div class="upload-zone" id="wallUpload">
+    <span class="icon">&#128247;</span>
+    <div class="label">Glissez votre photo ici ou cliquez</div>
+    <div class="hint">JPG ou PNG</div>
+    <input type="file" accept="image/*" hidden>
+  </div>
+
+  <div class="wall-calibrator" id="wallCalibrator" style="display:none;">
+    <p class="calib-help"><strong>Definissez les 4 coins du mur</strong> en deplacant les pastilles vertes. Cela permet un rendu perspective fidele a votre photo.</p>
+    <div class="calib-stage" id="calibStage">
+      <img id="calibImg" alt="Mur">
+      <svg class="calib-svg" id="calibSvg" preserveAspectRatio="none" viewBox="0 0 100 100"><polygon id="calibPoly" points=""/></svg>
+      <div class="corner-handle" data-corner="0"><span class="corner-label">Haut-gauche</span></div>
+      <div class="corner-handle" data-corner="1"><span class="corner-label">Haut-droite</span></div>
+      <div class="corner-handle" data-corner="2"><span class="corner-label">Bas-droite</span></div>
+      <div class="corner-handle" data-corner="3"><span class="corner-label">Bas-gauche</span></div>
+      <div class="magnifier" id="magnifier"></div>
+    </div>
+  </div>
+
+  <div class="tips">
+    <div class="tip">Photographiez le mur de face, bien droit</div>
+    <div class="tip">Eclairage naturel pour un rendu fidele</div>
+    <div class="tip">Incluez le sol pour mieux apprecier l'echelle</div>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label>Largeur du mur (m)</label>
+      <input type="number" id="wallWidth" value="3.3" min="0.5" max="20" step="0.1">
+    </div>
+    <div class="field">
+      <label>Hauteur du mur (m)</label>
+      <input type="number" id="wallHeight" value="2.5" min="1" max="5" step="0.1">
+    </div>
+  </div>
+
+  <div class="checks">
+    <label class="check"><input type="checkbox" id="hasCeiling" checked> Plafond au-dessus du mur</label>
+    <label class="check"><input type="checkbox" id="hasLeftWall"> Mur perpendiculaire a gauche</label>
+    <label class="check"><input type="checkbox" id="hasRightWall"> Mur perpendiculaire a droite</label>
+  </div>
+
+  <div class="card" id="livePreview" style="margin-top:24px;">
+    <div class="card-title">Surface imprimable max</div>
+    <div class="info-row"><span class="label">Hauteur max</span><span class="value" id="liveH">—</span></div>
+    <div class="info-row"><span class="label">Largeur max</span><span class="value" id="liveW">—</span></div>
+    <div class="info-row"><span class="label">Surface max</span><span class="value" id="liveArea" style="color:var(--mint);font-size:1.05rem;">—</span></div>
+    <div class="divider"></div>
+    <div class="info-row" style="font-size:0.78rem;"><span class="label">Configuration</span><span class="value" id="liveConfig" style="font-size:0.78rem;font-weight:500;">—</span></div>
+    <div class="warn" id="liveWarn" style="display:none;"></div>
+  </div>
+
+  <div class="actions-row">
+    <button class="btn btn-mint btn-block btn-lg" id="toStep2" disabled>Continuer</button>
+  </div>
+</section>
+
+<!-- ═══ Step 2: Design ═══ -->
+<section class="panel" id="step2">
+  <h2 class="panel-title">Votre design</h2>
+  <p class="panel-desc">Importez l'image que vous souhaitez imprimer sur votre mur.</p>
+
+  <div class="upload-zone" id="designUpload">
+    <span class="icon">&#127912;</span>
+    <div class="label">Glissez votre design ici ou cliquez</div>
+    <div class="hint">JPG ou PNG — fond transparent ideal</div>
+    <input type="file" accept="image/*" hidden>
+  </div>
+
+  <div class="card" id="step2Limits" style="margin-top:20px;">
+    <div class="card-title">Limites d'impression</div>
+    <div class="info-row"><span class="label">Largeur max</span><span class="value" id="limMaxW">—</span></div>
+    <div class="info-row"><span class="label">Hauteur max</span><span class="value" id="limMaxH">—</span></div>
+    <div class="divider"></div>
+    <div class="info-row"><span class="label">Recommande min (sans deformation)</span><span class="value" id="limReco" style="color:var(--mint);">—</span></div>
+    <div class="info-row"><span class="label">Recommande max (etirement tolere)</span><span class="value" id="limRecoMax" style="color:var(--ming);">—</span></div>
+    <div class="card-note" id="limRecoNote">Importez un design pour calculer la taille recommandee.</div>
+  </div>
+
+  <div class="field-row" style="margin-top:20px;">
+    <div class="field" style="margin-top:0;">
+      <label>Largeur souhaitee (m) <span id="designWMax" style="color:var(--gothic);font-weight:400;font-size:0.78rem;"></span></label>
+      <input type="number" id="designW" value="1" min="0.1" step="0.05">
+    </div>
+    <div class="field" style="margin-top:0;">
+      <label>Hauteur souhaitee (m) <span id="designHMax" style="color:var(--gothic);font-weight:400;font-size:0.78rem;"></span></label>
+      <input type="number" id="designH" value="1" min="0.1" step="0.05">
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <button class="btn btn-outline" id="useReco" type="button" style="flex:1;display:none;font-size:0.82rem;padding:8px;">Taille min (sans deformation)</button>
+    <button class="btn btn-outline" id="useRecoMax" type="button" style="flex:1;display:none;font-size:0.82rem;padding:8px;">Taille max (etirement tolere)</button>
+  </div>
+
+  <div class="actions-row">
+    <button class="btn btn-outline" id="backTo1">Retour</button>
+    <button class="btn btn-mint btn-block btn-lg" id="toStep3" disabled>Voir l'apercu</button>
+  </div>
+</section>
+
+<!-- ═══ Step 3: Preview ═══ -->
+<div class="preview-layout" id="step3">
+  <div class="canvas-wrap">
+    <div class="preview-stage" id="previewStage">
+      <img id="previewWall" class="wall-img" alt="">
+      <svg class="zone-overlay" id="zoneOverlay" preserveAspectRatio="none" viewBox="0 0 100 100">
+        <polygon class="printable" id="printablePoly" points=""/>
+        <g class="ruler" id="rulerGroup"></g>
+      </svg>
+      <img id="previewDesign" class="design-img" alt="">
+    </div>
+    <div class="canvas-loader" id="canvasLoader">
+      <div class="spinner"></div>
+      <p>Preparation de votre apercu...</p>
+    </div>
+    <div class="canvas-tooltip" id="tooltip">Glissez le design pour le repositionner</div>
+  </div>
+  <aside class="sidebar">
+    <!-- Info card -->
+    <div class="card">
+      <div class="card-title">Votre impression</div>
+      <div class="info-row"><span class="label">Dimensions</span><span class="value" id="infoDims">100 x 100 cm</span></div>
+      <div class="info-row"><span class="label">Surface</span><span class="value" id="infoArea">1.00 m&sup2;</span></div>
+      <div class="card-note">Dimensions indicatives — nos experts ajusteront le positionnement pour un rendu parfait.</div>
+      <div class="card-adjust-note" id="adjustNote" style="display:none;">* Positionnement final ajuste par nos techniciens</div>
+    </div>
+
+    <!-- Printable area card -->
+    <div class="card" id="printableCard">
+      <div class="card-title">Surface imprimable</div>
+      <div class="info-row"><span class="label">Configuration</span><span class="value" id="paConfig">—</span></div>
+      <div class="divider"></div>
+      <div class="info-row"><span class="label">Marge haut</span><span class="value" id="paTop">—</span></div>
+      <div class="info-row"><span class="label">Marge bas</span><span class="value" id="paBottom">—</span></div>
+      <div class="info-row"><span class="label">Marge gauche</span><span class="value" id="paLeft">—</span></div>
+      <div class="info-row"><span class="label">Marge droite</span><span class="value" id="paRight">—</span></div>
+      <div class="divider"></div>
+      <div class="info-row"><span class="label">Zone imprimable</span><span class="value" id="paDims">—</span></div>
+      <div class="info-row"><span class="label">Surface max</span><span class="value" id="paArea">—</span></div>
+      <div class="warn" id="paWarn" style="display:none;"></div>
+    </div>
+
+    <!-- Actions card -->
+    <div class="card">
+      <div class="card-title">Actions</div>
+      <div class="toggle-row">
+        <button class="btn btn-outline" id="toggleCompare" type="button">Comparer (mur seul)</button>
+        <button class="btn btn-outline" id="toggleBg" type="button">Retirer le fond</button>
+      </div>
+      <button class="btn btn-mint btn-block" id="downloadBtn" style="margin-top:10px;">&#8595; Telecharger l'apercu</button>
+      <button class="btn btn-outline btn-block" id="backTo2" style="margin-top:8px;">&#8592; Modifier</button>
+    </div>
+
+    <!-- CTA card -->
+    <div class="cta-card">
+      <h3>Envie de concretiser ce projet ?</h3>
+      <a href="https://www.muralinko.be/devis" target="_blank" class="btn btn-mint btn-block btn-lg">Demander un devis gratuit &#8594;</a>
+      <div class="small">Reponse sous 48h</div>
+    </div>
+  </aside>
+</div>
+
+<!-- Footer -->
+<div class="footer"></div>
+
+<script>
+(() => {
+  /* ─── State ─── */
+  let wallImg = null, wallFile = null;
+  let designImg = null, designFile = null;
+  let wallHeightM = 2.5, wallWidthM = 3.3;
+  let hasCeiling = true, hasLeftWall = false, hasRightWall = false;
+  let designWcm = 100, designHcm = 100;
+  let pxPerCm = 1;
+
+  /* ─── Machine configurations ─── */
+  const CONFIGS = [
+    { name: "Corps + Barre 4",                         hC: 153.5, hN: 188.5 },
+    { name: "Corps + Barre 1 + Barre 4",               hC: 192.7, hN: 227.7 },
+    { name: "Corps + Barre 2 + Barre 4",               hC: 192.7, hN: 227.7 },
+    { name: "Corps + Barre 3 + Barre 4",               hC: 253.5, hN: 288.5 },
+    { name: "Corps + Barres 1+2 + Barre 4",            hC: 231.9, hN: 266.9 },
+    { name: "Corps + Barres 1+3 + Barre 4",            hC: 292.7, hN: 327.7 },
+    { name: "Corps + Barres 2+3 + Barre 4",            hC: 292.7, hN: 327.7 },
+    { name: "Corps + Barres 1+2+3 + Barre 4 (max)",    hC: 331.9, hN: 366.9 }
+  ];
+  const MAX_HC = Math.max(...CONFIGS.map(c => c.hC));
+
+  function computePrintable(wallHcm, wallWcm, ceiling, leftW, rightW) {
+    const key = ceiling ? 'hC' : 'hN';
+    const valid = CONFIGS.filter(c => c[key] <= wallHcm);
+    let selected, tooShort = false;
+    if (valid.length > 0) {
+      selected = valid.reduce((a, b) => b[key] > a[key] ? b : a);
+    } else {
+      selected = CONFIGS.reduce((a, b) => b[key] < a[key] ? b : a);
+      tooShort = true;
+    }
+    const isMax = selected.hC === MAX_HC;
+    const top = ceiling ? 35 : 0;
+    const bottom = 54;
+    const left = leftW ? 10 : 0;
+    const right = rightW ? (isMax ? 60 : 48) : 0;
+    const configH = selected[key];
+    const printableH = Math.max(0, configH - top - bottom);
+    const printableW = Math.max(0, wallWcm - left - right);
+    const area = Math.round((printableH * printableW) / 10000 * 100) / 100;
+    return { selected, isMax, tooShort, top, bottom, left, right, printableH, printableW, area, configH };
+  }
+
+  /* Wall corners in fractional image coords (0..1). Order: TL, TR, BR, BL */
+  let wallCorners = [{x:0.05,y:0.05},{x:0.95,y:0.05},{x:0.95,y:0.95},{x:0.05,y:0.95}];
+
+  /* Design center in normalized wall plane coords (0..1, 0..1) */
+  let designU = 0.5, designV = 0.5;
+
+  /* ─── Homography: solve 4-point projective transform ─── */
+  function solveLinear(A, b) {
+    const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+    for (let i = 0; i < n; i++) {
+      let mx = i;
+      for (let k = i+1; k < n; k++) if (Math.abs(M[k][i]) > Math.abs(M[mx][i])) mx = k;
+      [M[i], M[mx]] = [M[mx], M[i]];
+      if (Math.abs(M[i][i]) < 1e-12) return null;
+      for (let k = i+1; k < n; k++) {
+        const f = M[k][i] / M[i][i];
+        for (let j = i; j <= n; j++) M[k][j] -= f * M[i][j];
+      }
+    }
+    const x = new Array(n);
+    for (let i = n-1; i >= 0; i--) {
+      let s = M[i][n];
+      for (let j = i+1; j < n; j++) s -= M[i][j] * x[j];
+      x[i] = s / M[i][i];
+    }
+    return x;
+  }
+  function homography(src, dst) {
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const [sx, sy] = [src[i].x, src[i].y], [dx, dy] = [dst[i].x, dst[i].y];
+      A.push([sx, sy, 1, 0, 0, 0, -dx*sx, -dx*sy]);
+      A.push([0, 0, 0, sx, sy, 1, -dy*sx, -dy*sy]);
+      b.push(dx); b.push(dy);
+    }
+    const h = solveLinear(A, b);
+    return h ? [h[0],h[1],h[2], h[3],h[4],h[5], h[6],h[7],1] : null;
+  }
+  function applyH(h, p) {
+    const w = h[6]*p.x + h[7]*p.y + h[8];
+    return { x: (h[0]*p.x + h[1]*p.y + h[2]) / w, y: (h[3]*p.x + h[4]*p.y + h[5]) / w };
+  }
+  function homographyToMatrix3d(h) {
+    return `matrix3d(${h[0]},${h[3]},0,${h[6]}, ${h[1]},${h[4]},0,${h[7]}, 0,0,1,0, ${h[2]},${h[5]},0,${h[8]})`;
+  }
+
+  /* ─── DOM refs ─── */
+  const $ = id => document.getElementById(id);
+
+  /* ─── Upload logic ─── */
+  function setupUpload(zoneId, cb) {
+    const zone = $(zoneId);
+    const input = zone.querySelector('input');
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0], zone, cb);
+    });
+    input.addEventListener('change', () => {
+      if (input.files.length) handleFile(input.files[0], zone, cb);
+    });
+  }
+
+  function handleFile(file, zone, cb) {
+    /* Show loading spinner */
+    zone.classList.add('has-file');
+    zone.innerHTML = `
+      <div class="upload-loading">
+        <div class="spinner"></div>
+        <p>Chargement en cours...</p>
+      </div>`;
+
+    const img = new Image();
+    img.onload = () => {
+      zone.innerHTML = `<img class="preview" src="${img.src}" alt="Apercu">`;
+      /* Re-attach click to re-upload */
+      const newInput = document.createElement('input');
+      newInput.type = 'file'; newInput.accept = 'image/*'; newInput.hidden = true;
+      zone.appendChild(newInput);
+      zone.addEventListener('click', () => newInput.click(), { once: false });
+      newInput.addEventListener('change', () => {
+        if (newInput.files.length) handleFile(newInput.files[0], zone, cb);
+      });
+      cb(img, file);
+    };
+    img.src = URL.createObjectURL(file);
+  }
+
+  setupUpload('wallUpload', (img, file) => {
+    wallImg = img; wallFile = file;
+    $('toStep2').disabled = false;
+    initCalibrator();
+  });
+
+  /* ─── Calibrator: 4 draggable corners ─── */
+  function initCalibrator() {
+    $('wallCalibrator').style.display = 'block';
+    const calibImg = $('calibImg');
+    calibImg.src = wallImg.src;
+    /* Reset corners to inset defaults */
+    wallCorners = [
+      { x: 0.10, y: 0.10 },
+      { x: 0.90, y: 0.10 },
+      { x: 0.90, y: 0.90 },
+      { x: 0.10, y: 0.90 }
+    ];
+    /* Wait for image layout before placing handles. Retry until stage has dimensions. */
+    const tryUpdate = (n) => {
+      const stage = $('calibStage');
+      if (stage.clientWidth > 0 && stage.clientHeight > 0) {
+        updateCalibrator();
+      } else if (n < 30) {
+        setTimeout(() => tryUpdate(n+1), 50);
+      }
+    };
+    if (calibImg.complete && calibImg.naturalWidth) tryUpdate(0);
+    else calibImg.onload = () => tryUpdate(0);
+  }
+
+  function updateCalibrator() {
+    const stage = $('calibStage');
+    const handles = stage.querySelectorAll('.corner-handle');
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    handles.forEach((el, i) => {
+      el.style.left = (wallCorners[i].x * w) + 'px';
+      el.style.top = (wallCorners[i].y * h) + 'px';
+    });
+    /* Update polygon (viewBox is 0..100, so use percentages) */
+    const pts = wallCorners.map(c => `${c.x*100},${c.y*100}`).join(' ');
+    $('calibPoly').setAttribute('points', pts);
+  }
+
+  /* Calibrator drag handlers */
+  let calibDrag = null;
+  function calibDown(e) {
+    const target = e.target.closest('.corner-handle');
+    if (!target) return;
+    e.preventDefault();
+    calibDrag = parseInt(target.dataset.corner, 10);
+    target.classList.add('dragging');
+    showMagnifier();
+  }
+  function calibMove(e) {
+    if (calibDrag === null) return;
+    e.preventDefault();
+    const stage = $('calibStage');
+    const r = stage.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    let fx = (cx - r.left) / r.width;
+    let fy = (cy - r.top) / r.height;
+    fx = Math.max(0, Math.min(1, fx));
+    fy = Math.max(0, Math.min(1, fy));
+    wallCorners[calibDrag] = { x: fx, y: fy };
+    updateCalibrator();
+    updateMagnifier(fx, fy);
+  }
+  function calibUp() {
+    if (calibDrag === null) return;
+    document.querySelectorAll('.corner-handle.dragging').forEach(el => el.classList.remove('dragging'));
+    calibDrag = null;
+    $('magnifier').style.display = 'none';
+  }
+
+  /* Magnifier: 3x zoom of wall image around the dragged corner */
+  function showMagnifier() {
+    const m = $('magnifier');
+    if (!wallImg) return;
+    m.style.backgroundImage = `url(${wallImg.src})`;
+    m.style.display = 'block';
+  }
+  function updateMagnifier(fx, fy) {
+    const m = $('magnifier');
+    const stage = $('calibStage');
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const ZOOM = 3;
+    const bgW = sw * ZOOM, bgH = sh * ZOOM;
+    const mSize = 90;
+    /* Position magnifier offset from corner so it doesn't sit under finger */
+    let mx = fx * sw + 30;
+    let my = fy * sh - mSize - 30;
+    if (mx + mSize > sw) mx = fx * sw - mSize - 30;
+    if (my < 0) my = fy * sh + 30;
+    m.style.left = mx + 'px';
+    m.style.top = my + 'px';
+    m.style.backgroundSize = bgW + 'px ' + bgH + 'px';
+    /* Center the zoomed point under the magnifier crosshair */
+    const offX = -(fx * bgW - mSize/2);
+    const offY = -(fy * bgH - mSize/2);
+    m.style.backgroundPosition = offX + 'px ' + offY + 'px';
+  }
+  document.addEventListener('mousedown', calibDown);
+  document.addEventListener('mousemove', calibMove);
+  document.addEventListener('mouseup', calibUp);
+  document.addEventListener('touchstart', calibDown, { passive: false });
+  document.addEventListener('touchmove', calibMove, { passive: false });
+  document.addEventListener('touchend', calibUp);
+  window.addEventListener('resize', () => { updateCalibrator(); if ($('step3').classList.contains('active')) renderPreviewStage(); });
+
+  /* ─── Live printable preview on step 1 ─── */
+  function updateLivePreview() {
+    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
+    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const c = $('hasCeiling').checked;
+    const l = $('hasLeftWall').checked;
+    const r = $('hasRightWall').checked;
+    if (wH <= 0 || wW <= 0) return;
+    const res = computePrintable(wH, wW, c, l, r);
+    $('liveH').textContent = (res.printableH/100).toFixed(2) + ' m';
+    $('liveW').textContent = (res.printableW/100).toFixed(2) + ' m';
+    $('liveArea').textContent = res.area.toFixed(2) + ' m²';
+    $('liveConfig').innerHTML = res.selected.name + (res.isMax ? ' <span class="badge-max">max</span>' : '');
+    const warns = [];
+    if (res.tooShort) warns.push('Mur trop bas pour la plus petite configuration.');
+    if (wH > Math.max(...CONFIGS.map(x => c ? x.hC : x.hN)) && c) warns.push('Mur plus haut que la machine — zone limitee a la hauteur machine.');
+    if (res.printableH <= 0 || res.printableW <= 0) warns.push('Aucune surface imprimable.');
+    const w = $('liveWarn');
+    if (warns.length) { w.style.display = 'block'; w.innerHTML = warns.join('<br>'); }
+    else w.style.display = 'none';
+  }
+  ['wallHeight', 'wallWidth', 'hasCeiling', 'hasLeftWall', 'hasRightWall'].forEach(id => {
+    $(id).addEventListener('input', updateLivePreview);
+    $(id).addEventListener('change', updateLivePreview);
+  });
+  updateLivePreview();
+  setupUpload('designUpload', (img, file) => {
+    designImg = img; designFile = file;
+    $('toStep3').disabled = false;
+    updateStep2Limits();
+  });
+
+  /* ─── Step 2 limits & recommendations ─── */
+  function updateStep2Limits() {
+    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
+    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const c = $('hasCeiling').checked;
+    const l = $('hasLeftWall').checked;
+    const r = $('hasRightWall').checked;
+    if (wH <= 0 || wW <= 0) return;
+    const pa = computePrintable(wH, wW, c, l, r);
+    const maxW = pa.printableW, maxH = pa.printableH;
+    const fmtM = cm => (cm / 100).toFixed(2);
+    $('limMaxW').textContent = fmtM(maxW) + ' m';
+    $('limMaxH').textContent = fmtM(maxH) + ' m';
+    $('designW').max = (maxW / 100).toFixed(2);
+    $('designH').max = (maxH / 100).toFixed(2);
+    $('designWMax').textContent = '(max ' + fmtM(maxW) + ' m)';
+    $('designHMax').textContent = '(max ' + fmtM(maxH) + ' m)';
+
+    if (designImg && designImg.naturalWidth) {
+      const ratio = designImg.naturalWidth / designImg.naturalHeight;
+      let recH = maxH, recW = recH * ratio;
+      let constrained = 'h';
+      if (recW > maxW) { recW = maxW; recH = recW / ratio; constrained = 'w'; }
+
+      const STRETCH_MAX = 1.5;
+      let maxRecW = recW, maxRecH = recH;
+      if (constrained === 'h') maxRecW = Math.min(recW * STRETCH_MAX, maxW);
+      else maxRecH = Math.min(recH * STRETCH_MAX, maxH);
+
+      $('limReco').textContent = fmtM(recW) + ' x ' + fmtM(recH) + ' m';
+      $('limRecoMax').textContent = fmtM(maxRecW) + ' x ' + fmtM(maxRecH) + ' m';
+      $('limRecoNote').innerHTML = 'Calcules a partir du ratio de votre design (' +
+        designImg.naturalWidth + 'x' + designImg.naturalHeight + ' px). ' +
+        '<strong>Min</strong> respecte les proportions exactes ; <strong>Max</strong> autorise un etirement jusqu\'a ' +
+        Math.round((STRETCH_MAX-1)*100) + '% sur le cote contraint avant deformation visible. Au-dela, le rendu sera fortement deforme.';
+      $('useReco').style.display = 'block';
+      $('useReco').dataset.w = (recW/100).toFixed(2); $('useReco').dataset.h = (recH/100).toFixed(2);
+      $('useRecoMax').style.display = (Math.abs(maxRecW - recW) > 1 || Math.abs(maxRecH - recH) > 1) ? 'block' : 'none';
+      $('useRecoMax').dataset.w = (maxRecW/100).toFixed(2); $('useRecoMax').dataset.h = (maxRecH/100).toFixed(2);
+
+      const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
+      if (dw === 1 && dh === 1) {
+        $('designW').value = (recW/100).toFixed(2); $('designH').value = (recH/100).toFixed(2);
+      }
+    } else {
+      $('limReco').textContent = '—';
+      $('limRecoMax').textContent = '—';
+      $('limRecoNote').textContent = 'Importez un design pour calculer la taille recommandee.';
+      $('useReco').style.display = 'none';
+      $('useRecoMax').style.display = 'none';
+    }
+  }
+
+  $('useReco').addEventListener('click', () => {
+    $('designW').value = $('useReco').dataset.w;
+    $('designH').value = $('useReco').dataset.h;
+  });
+  $('useRecoMax').addEventListener('click', () => {
+    $('designW').value = $('useRecoMax').dataset.w;
+    $('designH').value = $('useRecoMax').dataset.h;
+  });
+
+  /* Constrain manual input to max */
+  ['designW', 'designH'].forEach(id => {
+    $(id).addEventListener('input', () => {
+      const el = $(id);
+      const max = parseFloat(el.max);
+      if (max && parseFloat(el.value) > max) el.value = max;
+    });
+  });
+
+  /* ─── Navigation ─── */
+  const panels = ['step1', 'step2', 'step3'];
+  const dots = document.querySelectorAll('.step-dot');
+  const lines = document.querySelectorAll('.step-line');
+
+  function goTo(step) {
+    panels.forEach(id => {
+      const el = $(id);
+      el.classList.remove('active');
+    });
+    if (step === 3) {
+      $('step3').classList.add('active');
+    } else {
+      $('step' + step).classList.add('active');
+    }
+    dots.forEach((d, i) => {
+      d.classList.remove('active', 'done');
+      if (i + 1 < step) d.classList.add('done');
+      if (i + 1 === step) d.classList.add('active');
+    });
+    lines.forEach((l, i) => {
+      l.classList.toggle('done', i + 1 < step);
+    });
+    if (step === 3) {
+      /* Show loader first, then render after browser paints it */
+      $('canvasLoader').classList.remove('hidden');
+      setTimeout(() => initPreview(), 400);
+    }
+    window.scrollTo({ top: 0 });
+  }
+
+  $('toStep2').addEventListener('click', () => {
+    wallHeightM = parseFloat($('wallHeight').value) || 2.5;
+    wallWidthM = parseFloat($('wallWidth').value) || 3.3;
+    hasCeiling = $('hasCeiling').checked;
+    hasLeftWall = $('hasLeftWall').checked;
+    hasRightWall = $('hasRightWall').checked;
+    updateStep2Limits();
+    goTo(2);
+  });
+  $('toStep3').addEventListener('click', () => {
+    designWcm = (parseFloat($('designW').value) || 1) * 100;
+    designHcm = (parseFloat($('designH').value) || 1) * 100;
+    goTo(3);
+  });
+  $('backTo1').addEventListener('click', () => goTo(1));
+  $('backTo2').addEventListener('click', () => goTo(2));
+
+  /* ─── Preview (DOM perspective) ─── */
+  function initPreview() {
+    const wallEl = $('previewWall');
+    const designEl = $('previewDesign');
+    wallEl.src = wallImg.src;
+    designEl.src = designImg.src;
+    designU = 0.5; designV = 0.5;
+    renderPrintable();
+    /* Poll until layout is ready (stage has dimensions) */
+    const tryRender = (n) => {
+      const stage = $('previewStage');
+      if (stage.clientWidth > 0 && stage.clientHeight > 0 && wallEl.complete && wallEl.naturalWidth) {
+        renderPreviewStage();
+        setTimeout(() => { $('canvasLoader').classList.add('hidden'); showTooltip(); }, 150);
+      } else if (n < 30) {
+        setTimeout(() => tryRender(n+1), 50);
+      }
+    };
+    tryRender(0);
+  }
+
+  /* Compute wall quad corners in display pixels (relative to preview-stage) */
+  function getWallQuadPx() {
+    const stage = $('previewStage');
+    const w = stage.clientWidth, h = stage.clientHeight;
+    return wallCorners.map(c => ({ x: c.x * w, y: c.y * h }));
+  }
+
+  /* Render the design with perspective + the printable zone overlay */
+  function renderPreviewStage() {
+    const stage = $('previewStage');
+    const designEl = $('previewDesign');
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    if (!sw || !sh || !designImg) return;
+
+    /* Wall quad in display px */
+    const Q = getWallQuadPx();
+
+    /* Homography: unit square (wall plane (u,v) in 0..1) -> wall quad in px */
+    const H = homography(
+      [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
+      Q
+    );
+    if (!H) return;
+
+    /* Design size as fraction of wall (cm/cm). When bg removed, scale up so subject keeps its size */
+    const wallWcm = wallWidthM * 100;
+    const wallHcm = wallHeightM * 100;
+    const sx = bgOn ? bgScaleX : 1;
+    const sy = bgOn ? bgScaleY : 1;
+    const fW = Math.min(1, (designWcm * sx) / wallWcm);
+    const fH = Math.min(1, (designHcm * sy) / wallHcm);
+
+    /* Clamp center so design stays inside wall plane */
+    designU = Math.max(fW/2, Math.min(1 - fW/2, designU));
+    designV = Math.max(fH/2, Math.min(1 - fH/2, designV));
+
+    /* Design's 4 corners in (u,v) wall plane */
+    const u1 = designU - fW/2, u2 = designU + fW/2;
+    const v1 = designV - fH/2, v2 = designV + fH/2;
+    const D = [
+      applyH(H, {x:u1,y:v1}),
+      applyH(H, {x:u2,y:v1}),
+      applyH(H, {x:u2,y:v2}),
+      applyH(H, {x:u1,y:v2})
+    ];
+
+    /* Source: design's natural rect; render the <img> at its natural size and warp */
+    const dW = designImg.naturalWidth || 1;
+    const dH = designImg.naturalHeight || 1;
+    designEl.style.width = dW + 'px';
+    designEl.style.height = dH + 'px';
+
+    const Hd = homography(
+      [{x:0,y:0},{x:dW,y:0},{x:dW,y:dH},{x:0,y:dH}],
+      D
+    );
+    if (Hd) designEl.style.transform = homographyToMatrix3d(Hd);
+
+    /* Printable zone polygon (in wall (u,v), then projected) */
+    const u_l = (hasLeftWall ? 10 : 0) / wallWcm;
+    const u_r = 1 - (hasRightWall ? (computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall).right) : 0) / wallWcm;
+    const v_t = (hasCeiling ? 35 : 0) / wallHcm;
+    /* For bottom: we use machine printable bottom relative to wall, but cap to 1 */
+    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall);
+    const v_b = Math.min(1, (v_t * wallHcm + pa.printableH) / wallHcm);
+    const Z = [
+      applyH(H, {x:u_l,y:v_t}),
+      applyH(H, {x:u_r,y:v_t}),
+      applyH(H, {x:u_r,y:v_b}),
+      applyH(H, {x:u_l,y:v_b})
+    ];
+    const poly = Z.map(p => `${(p.x/sw)*100},${(p.y/sh)*100}`).join(' ');
+    $('printablePoly').setAttribute('points', poly);
+
+    /* Scale ruler at the bottom of the wall: 1m segments with 10cm ticks */
+    const rulerG = $('rulerGroup');
+    rulerG.innerHTML = '';
+    const v_ruler = 0.985; /* near bottom of wall */
+    const totalM = wallWidthM;
+    const step = 0.1; /* 10 cm */
+    let svgChunks = '';
+    /* Main horizontal line from u=0 to u=1 along v=v_ruler */
+    const a = applyH(H, {x:0, y:v_ruler});
+    const b = applyH(H, {x:1, y:v_ruler});
+    svgChunks += `<line x1="${a.x/sw*100}" y1="${a.y/sh*100}" x2="${b.x/sw*100}" y2="${b.y/sh*100}"/>`;
+    /* Tick marks every 10cm. Tick height in v direction ~0.012, longer for full meter */
+    for (let m_pos = 0; m_pos <= totalM + 1e-6; m_pos += step) {
+      const u = m_pos / totalM;
+      if (u > 1) break;
+      const isMeter = Math.abs(m_pos - Math.round(m_pos)) < 1e-3;
+      const tickH = isMeter ? 0.025 : 0.012;
+      const p1 = applyH(H, {x:u, y:v_ruler});
+      const p2 = applyH(H, {x:u, y:v_ruler - tickH});
+      svgChunks += `<line x1="${p1.x/sw*100}" y1="${p1.y/sh*100}" x2="${p2.x/sw*100}" y2="${p2.y/sh*100}" style="stroke-width:${isMeter?0.35:0.2}"/>`;
+      if (isMeter && m_pos > 0) {
+        const lp = applyH(H, {x:u, y:v_ruler - 0.04});
+        svgChunks += `<text x="${lp.x/sw*100}" y="${lp.y/sh*100}" text-anchor="middle">${m_pos.toFixed(0)} m</text>`;
+      }
+    }
+    rulerG.innerHTML = svgChunks;
+
+    updateInfo();
+  }
+
+  /* ─── Printable area display ─── */
+  function renderPrintable() {
+    const r = computePrintable(wallHeightM * 100, wallWidthM * 100, hasCeiling, hasLeftWall, hasRightWall);
+    const maxBadge = r.isMax ? '<span class="badge-max">max</span>' : '';
+    $('paConfig').innerHTML = r.selected.name + maxBadge;
+    $('paTop').textContent = r.top + ' cm';
+    $('paBottom').textContent = r.bottom + ' cm';
+    $('paLeft').textContent = r.left + ' cm';
+    $('paRight').textContent = r.right + ' cm' + (r.isMax && hasRightWall ? ' (stabilisateur)' : '');
+    $('paDims').textContent = (r.printableW/100).toFixed(2) + ' x ' + (r.printableH/100).toFixed(2) + ' m';
+    $('paArea').textContent = r.area.toFixed(2) + ' m²';
+    const warn = $('paWarn');
+    const warnings = [];
+    if (r.tooShort) warnings.push('Le mur est trop bas pour la plus petite configuration machine.');
+    if (wallHeightM * 100 > MAX_HC && hasCeiling) warnings.push('Mur plus haut que la machine max — la zone imprimable est limitee a la hauteur machine.');
+    if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
+    if (warnings.length) { warn.style.display = 'block'; warn.innerHTML = warnings.join('<br>'); }
+    else warn.style.display = 'none';
+  }
+
+  /* ─── Design drag (in wall plane via inverse homography) ─── */
+  let designDrag = null;
+  function previewDown(e) {
+    if (e.target !== $('previewDesign')) return;
+    e.preventDefault();
+    const stage = $('previewStage');
+    const r = stage.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const Q = getWallQuadPx();
+    const Hinv = homography(Q, [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]);
+    if (!Hinv) return;
+    const p = applyH(Hinv, { x: cx - r.left, y: cy - r.top });
+    designDrag = { offU: p.x - designU, offV: p.y - designV };
+    $('previewDesign').classList.add('dragging');
+  }
+  function previewMove(e) {
+    if (!designDrag) return;
+    e.preventDefault();
+    const stage = $('previewStage');
+    const r = stage.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const Q = getWallQuadPx();
+    const Hinv = homography(Q, [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]);
+    if (!Hinv) return;
+    const p = applyH(Hinv, { x: cx - r.left, y: cy - r.top });
+    designU = p.x - designDrag.offU;
+    designV = p.y - designDrag.offV;
+    renderPreviewStage();
+  }
+  function previewUp() {
+    if (!designDrag) return;
+    designDrag = null;
+    $('previewDesign').classList.remove('dragging');
+  }
+  document.addEventListener('mousedown', previewDown);
+  document.addEventListener('mousemove', previewMove);
+  document.addEventListener('mouseup', previewUp);
+  document.addEventListener('touchstart', previewDown, { passive: false });
+  document.addEventListener('touchmove', previewMove, { passive: false });
+  document.addEventListener('touchend', previewUp);
+
+  /* ─── Info update ─── */
+  function updateInfo() {
+    $('infoDims').textContent = (designWcm/100).toFixed(2) + ' x ' + (designHcm/100).toFixed(2) + ' m';
+    $('infoArea').textContent = ((designWcm * designHcm) / 10000).toFixed(2) + ' m2';
+    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
+    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall);
+    const xCm = designU * wallWcm - designWcm/2;
+    const yCm = designV * wallHcm - designHcm/2;
+    const outOfZone = xCm < pa.left || yCm < pa.top ||
+      (xCm + designWcm) > (wallWcm - pa.right) ||
+      (yCm + designHcm) > (pa.top + pa.printableH);
+    $('adjustNote').style.display = outOfZone ? 'block' : 'none';
+  }
+
+  /* ─── Tooltip ─── */
+  function showTooltip() {
+    const tip = $('tooltip');
+    tip.classList.remove('hidden');
+    setTimeout(() => tip.classList.add('hidden'), 5000);
+  }
+
+  /* ─── Toggles: compare + background removal ─── */
+  let compareOn = false;
+  $('toggleCompare').addEventListener('click', () => {
+    compareOn = !compareOn;
+    $('previewDesign').style.opacity = compareOn ? '0' : '1';
+    $('toggleCompare').textContent = compareOn ? 'Afficher le design' : 'Comparer (mur seul)';
+    $('toggleCompare').classList.toggle('active', compareOn);
+  });
+
+  /* Background removal — uses @imgly/background-removal (ML model, lazy-loaded from CDN) */
+  let designImgNoBg = null, bgOn = false, bgRemovalLoading = false;
+  /* Scale to apply when bg is removed so the subject keeps its size */
+  let bgScaleX = 1, bgScaleY = 1;
+
+  function detectContentBbox(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    let minX = c.width, minY = c.height, maxX = -1, maxY = -1;
+    for (let y = 0; y < c.height; y++) {
+      for (let xx = 0; xx < c.width; xx++) {
+        if (d[(y*c.width + xx)*4 + 3] > 8) {
+          if (xx < minX) minX = xx;
+          if (xx > maxX) maxX = xx;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return { w: c.width, h: c.height };
+    return { w: maxX - minX + 1, h: maxY - minY + 1, fullW: c.width, fullH: c.height };
+  }
+
+  async function loadBgRemovalLib() {
+    if (window._imglyBgRemoval) return window._imglyBgRemoval;
+    const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm');
+    window._imglyBgRemoval = mod.removeBackground || mod.default;
+    return window._imglyBgRemoval;
+  }
+
+  async function removeBgML(imgSrc) {
+    const removeBackground = await loadBgRemovalLib();
+    const blob = await removeBackground(imgSrc, {
+      output: { format: 'image/png', quality: 0.9 },
+      progress: (key, current, total) => {
+        const pct = Math.round((current / total) * 100);
+        $('toggleBg').textContent = `Traitement... ${pct}%`;
+      }
+    });
+    const url = URL.createObjectURL(blob);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  $('toggleBg').addEventListener('click', async () => {
+    if (bgRemovalLoading) return;
+    /* If we already have the no-bg version, just toggle */
+    if (designImgNoBg) {
+      bgOn = !bgOn;
+      $('toggleBg').textContent = bgOn ? 'Restaurer le fond' : 'Retirer le fond';
+      $('toggleBg').classList.toggle('active', bgOn);
+      $('previewDesign').src = bgOn ? designImgNoBg.src : designImg.src;
+      $('previewDesign').onload = () => renderPreviewStage();
+      return;
+    }
+    /* First time: run ML model */
+    bgRemovalLoading = true;
+    const btn = $('toggleBg');
+    btn.disabled = true;
+    btn.textContent = 'Chargement du modele...';
+    try {
+      designImgNoBg = await removeBgML(designImg.src);
+      const bbox = detectContentBbox(designImgNoBg);
+      bgScaleX = bbox.fullW / bbox.w;
+      bgScaleY = bbox.fullH / bbox.h;
+      bgOn = true;
+      btn.textContent = 'Restaurer le fond';
+      btn.classList.add('active');
+      $('previewDesign').src = designImgNoBg.src;
+      $('previewDesign').onload = () => renderPreviewStage();
+    } catch (e) {
+      console.error('BG removal failed:', e);
+      btn.textContent = 'Echec — reessayer';
+      setTimeout(() => { btn.textContent = 'Retirer le fond'; }, 2500);
+    } finally {
+      btn.disabled = false;
+      bgRemovalLoading = false;
+    }
+  });
+
+  /* ─── Download (canvas + 2-triangle perspective) ─── */
+  function drawTexturedTriangle(ctx, img, sp, dp) {
+    /* Map source triangle sp[0..2] -> dest triangle dp[0..2] using affine transform */
+    const [s0,s1,s2] = sp, [d0,d1,d2] = dp;
+    const denom = (s1.x-s0.x)*(s2.y-s0.y) - (s2.x-s0.x)*(s1.y-s0.y);
+    if (Math.abs(denom) < 1e-9) return;
+    const a = ((d1.x-d0.x)*(s2.y-s0.y) - (d2.x-d0.x)*(s1.y-s0.y)) / denom;
+    const b = ((d2.x-d0.x)*(s1.x-s0.x) - (d1.x-d0.x)*(s2.x-s0.x)) / denom;
+    const c = ((d1.y-d0.y)*(s2.y-s0.y) - (d2.y-d0.y)*(s1.y-s0.y)) / denom;
+    const d = ((d2.y-d0.y)*(s1.x-s0.x) - (d1.y-d0.y)*(s2.x-s0.x)) / denom;
+    const e = d0.x - a*s0.x - b*s0.y;
+    const f = d0.y - c*s0.x - d*s0.y;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(d0.x, d0.y); ctx.lineTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y); ctx.closePath();
+    ctx.clip();
+    ctx.transform(a, c, b, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  $('downloadBtn').addEventListener('click', () => {
+    const natW = wallImg.naturalWidth;
+    const natH = wallImg.naturalHeight;
+    const exp = document.createElement('canvas');
+    exp.width = natW; exp.height = natH;
+    const ec = exp.getContext('2d');
+
+    /* Wall */
+    ec.drawImage(wallImg, 0, 0, natW, natH);
+
+    /* Compute design destination quad in NATURAL pixels of wall */
+    const wallQuadNat = wallCorners.map(c => ({ x: c.x * natW, y: c.y * natH }));
+    const Hwall = homography(
+      [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
+      wallQuadNat
+    );
+    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
+    const sxd = bgOn ? bgScaleX : 1, syd = bgOn ? bgScaleY : 1;
+    const fW = Math.min(1, (designWcm * sxd) / wallWcm), fH = Math.min(1, (designHcm * syd) / wallHcm);
+    const u1 = designU - fW/2, u2 = designU + fW/2;
+    const v1 = designV - fH/2, v2 = designV + fH/2;
+    const D = [
+      applyH(Hwall, {x:u1,y:v1}),
+      applyH(Hwall, {x:u2,y:v1}),
+      applyH(Hwall, {x:u2,y:v2}),
+      applyH(Hwall, {x:u1,y:v2})
+    ];
+    const srcImg = (bgOn && designImgNoBg) ? designImgNoBg : designImg;
+    const dW = srcImg.naturalWidth, dH = srcImg.naturalHeight;
+    const S = [{x:0,y:0},{x:dW,y:0},{x:dW,y:dH},{x:0,y:dH}];
+
+    /* If bg removed, use source-over (transparent already); else multiply */
+    ec.globalCompositeOperation = bgOn ? 'source-over' : 'multiply';
+    drawTexturedTriangle(ec, srcImg, [S[0],S[1],S[2]], [D[0],D[1],D[2]]);
+    drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
+    ec.globalCompositeOperation = 'source-over';
+
+    /* Watermark */
+    ec.save();
+    ec.globalAlpha = 0.3;
+    ec.fillStyle = '#00C78F';
+    const fSize = Math.max(14, natW * 0.018);
+    ec.font = `600 ${fSize}px Inter, sans-serif`;
+    ec.textAlign = 'right';
+    ec.fillText('muralinko.be', natW - fSize, natH - fSize * 0.8);
+    ec.restore();
+
+    const link = document.createElement('a');
+    link.download = 'muralinko-apercu.png';
+    link.href = exp.toDataURL('image/png');
+    link.click();
+  });
+
+})();
+</script>
+
+</body>
+</html>
