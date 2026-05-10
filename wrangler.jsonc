@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/wrangler",
+  "name": "muralinko-simulator",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "single-page-application"
+  }
+}
