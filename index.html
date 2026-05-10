@@ -579,11 +579,11 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   <div class="field-row">
     <div class="field">
       <label>Largeur du mur (m)</label>
-      <input type="number" id="wallWidth" value="3.3" min="0.5" max="20" step="0.1">
+      <input type="number" id="wallWidth" placeholder="ex : 3.30" min="0.5" max="20" step="0.1">
     </div>
     <div class="field">
       <label>Hauteur du mur (m)</label>
-      <input type="number" id="wallHeight" value="2.5" min="1" max="5" step="0.1">
+      <input type="number" id="wallHeight" placeholder="ex : 2.50" min="1" max="5" step="0.1">
     </div>
   </div>
 
@@ -593,7 +593,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     <label class="check"><input type="checkbox" id="hasRightWall"> Mur perpendiculaire a droite</label>
   </div>
 
-  <div class="card" id="livePreview" style="margin-top:24px;">
+  <div class="card" id="livePreview" style="margin-top:24px;display:none;">
     <div class="card-title">Surface imprimable max</div>
     <div class="info-row"><span class="label">Hauteur max</span><span class="value" id="liveH">—</span></div>
     <div class="info-row"><span class="label">Largeur max</span><span class="value" id="liveW">—</span></div>
@@ -633,11 +633,11 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   <div class="field-row" style="margin-top:20px;">
     <div class="field" style="margin-top:0;">
       <label>Largeur souhaitee (m) <span id="designWMax" style="color:var(--gothic);font-weight:400;font-size:0.78rem;"></span></label>
-      <input type="number" id="designW" value="1" min="0.1" step="0.05">
+      <input type="number" id="designW" placeholder="—" min="0.1" step="0.05">
     </div>
     <div class="field" style="margin-top:0;">
       <label>Hauteur souhaitee (m) <span id="designHMax" style="color:var(--gothic);font-weight:400;font-size:0.78rem;"></span></label>
-      <input type="number" id="designH" value="1" min="0.1" step="0.05">
+      <input type="number" id="designH" placeholder="—" min="0.1" step="0.05">
     </div>
   </div>
   <div style="display:flex;gap:8px;margin-top:10px;">
@@ -854,9 +854,15 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   setupUpload('wallUpload', (img, file) => {
     wallImg = img; wallFile = file;
-    $('toStep2').disabled = false;
     initCalibrator();
+    refreshContinueGate();
   });
+
+  function refreshContinueGate() {
+    const wH = parseFloat($('wallHeight').value) || 0;
+    const wW = parseFloat($('wallWidth').value) || 0;
+    $('toStep2').disabled = !(wallImg && wH > 0 && wW > 0);
+  }
 
   /* ─── Calibrator: 4 draggable corners ─── */
   function initCalibrator() {
@@ -971,7 +977,12 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const c = $('hasCeiling').checked;
     const l = $('hasLeftWall').checked;
     const r = $('hasRightWall').checked;
-    if (wH <= 0 || wW <= 0) return;
+    /* Hide card until both dimensions are entered */
+    if (wH <= 0 || wW <= 0) {
+      $('livePreview').style.display = 'none';
+      return;
+    }
+    $('livePreview').style.display = 'block';
     const res = computePrintable(wH, wW, c, l, r);
     $('liveH').textContent = (res.printableH/100).toFixed(2) + ' m';
     $('liveW').textContent = (res.printableW/100).toFixed(2) + ' m';
@@ -986,14 +997,22 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     else w.style.display = 'none';
   }
   ['wallHeight', 'wallWidth', 'hasCeiling', 'hasLeftWall', 'hasRightWall'].forEach(id => {
-    $(id).addEventListener('input', updateLivePreview);
-    $(id).addEventListener('change', updateLivePreview);
+    $(id).addEventListener('input', () => { updateLivePreview(); refreshContinueGate(); });
+    $(id).addEventListener('change', () => { updateLivePreview(); refreshContinueGate(); });
   });
   updateLivePreview();
   setupUpload('designUpload', (img, file) => {
     designImg = img; designFile = file;
-    $('toStep3').disabled = false;
     updateStep2Limits();
+    refreshStep3Gate();
+  });
+
+  function refreshStep3Gate() {
+    const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
+    $('toStep3').disabled = !(designImg && dw > 0 && dh > 0);
+  }
+  ['designW', 'designH'].forEach(id => {
+    $(id).addEventListener('input', refreshStep3Gate);
   });
 
   /* ─── Step 2 limits & recommendations ─── */
@@ -1037,9 +1056,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       $('useRecoMax').dataset.w = (maxRecW/100).toFixed(2); $('useRecoMax').dataset.h = (maxRecH/100).toFixed(2);
 
       const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
-      if (dw === 1 && dh === 1) {
+      if (!(dw > 0) || !(dh > 0)) {
         $('designW').value = (recW/100).toFixed(2); $('designH').value = (recH/100).toFixed(2);
       }
+      refreshStep3Gate();
     } else {
       $('limReco').textContent = '—';
       $('limRecoMax').textContent = '—';
@@ -1099,8 +1119,9 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   }
 
   $('toStep2').addEventListener('click', () => {
-    wallHeightM = parseFloat($('wallHeight').value) || 2.5;
-    wallWidthM = parseFloat($('wallWidth').value) || 3.3;
+    const h = parseFloat($('wallHeight').value), w = parseFloat($('wallWidth').value);
+    if (!(h > 0) || !(w > 0)) return;
+    wallHeightM = h; wallWidthM = w;
     hasCeiling = $('hasCeiling').checked;
     hasLeftWall = $('hasLeftWall').checked;
     hasRightWall = $('hasRightWall').checked;
@@ -1108,8 +1129,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     goTo(2);
   });
   $('toStep3').addEventListener('click', () => {
-    designWcm = (parseFloat($('designW').value) || 1) * 100;
-    designHcm = (parseFloat($('designH').value) || 1) * 100;
+    const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
+    if (!(dw > 0) || !(dh > 0)) return;
+    designWcm = dw * 100;
+    designHcm = dh * 100;
     goTo(3);
   });
   $('backTo1').addEventListener('click', () => goTo(1));
