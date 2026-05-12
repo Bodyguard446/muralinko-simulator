@@ -1145,8 +1145,25 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   updateLivePreview();
   /* Render the 3 empty design slots on initial load so they're visible from the start */
   renderDesignThumbs();
-  function onDesignUploaded(img, file) {
+  async function onDesignUploaded(img, file) {
     if (designs.length >= MAX_DESIGNS) return;
+    /* Rasterize SVG (or any image without intrinsic dimensions) into a PNG-backed image so the
+       rest of the pipeline (perspective render, recommendations, bg removal) gets proper bitmap. */
+    if (file && file.type === 'image/svg+xml') {
+      try {
+        const w = img.naturalWidth || 1024;
+        const h = img.naturalHeight || 1024;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+        const rasterImg = new Image();
+        rasterImg.src = URL.createObjectURL(blob);
+        if (rasterImg.decode) await rasterImg.decode();
+        else await new Promise(r => { rasterImg.onload = r; });
+        img = rasterImg;
+      } catch (e) { console.error('SVG rasterize failed:', e); }
+    }
     /* Each design has its own desired size (cm); null until first recommendation auto-fills */
     designs.push({ img, file, noBgImg: null, bgScaleX: 1, bgScaleY: 1, sizeCm: null });
     activeDesignIdx = designs.length - 1;
@@ -1772,7 +1789,24 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   }
   async function removeBgML(imgSrc) {
     const removeBackground = await loadBgRemovalLib();
-    const blob = await removeBackground(imgSrc, {
+    /* Convert ANY image format (SVG, WebP, AVIF, etc.) to a PNG blob via canvas.
+       The model only accepts raster formats — this guarantees it works regardless of upload type. */
+    const srcImg = new Image();
+    srcImg.crossOrigin = 'anonymous';
+    srcImg.src = imgSrc;
+    try {
+      if (srcImg.decode) await srcImg.decode();
+      else await new Promise((res, rej) => { srcImg.onload = res; srcImg.onerror = rej; });
+    } catch (e) { throw new Error('Image cannot be decoded for bg removal'); }
+    /* Some SVGs have no intrinsic size — fall back to a sensible default to avoid 0×0 canvas */
+    const w = srcImg.naturalWidth || 1024;
+    const h = srcImg.naturalHeight || 1024;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(srcImg, 0, 0, w, h);
+    const pngBlob = await new Promise((res, rej) =>
+      c.toBlob(b => b ? res(b) : rej(new Error('canvas.toBlob failed')), 'image/png'));
+    const blob = await removeBackground(pngBlob, {
       output: { format: 'image/png', quality: 0.9 },
       progress: (key, current, total) => {
         const pct = Math.round((current / total) * 100);
