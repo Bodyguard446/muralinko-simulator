@@ -764,6 +764,17 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       <div class="card-title">Votre impression</div>
       <div class="info-row"><span class="label">Dimensions</span><span class="value" id="infoDims">100 x 100 cm</span></div>
       <div class="info-row"><span class="label">Surface</span><span class="value" id="infoArea">1.00 m&sup2;</span></div>
+      <div class="divider"></div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-outline" id="step3UseReco" type="button" style="flex:1;font-size:0.78rem;padding:8px 6px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span>Taille min</span>
+        </button>
+        <button class="btn btn-outline" id="step3UseRecoMax" type="button" style="flex:1;font-size:0.78rem;padding:8px 6px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <span>Taille max</span>
+        </button>
+      </div>
       <div class="card-note">Dimensions indicatives — nos experts ajusteront le positionnement pour un rendu parfait.</div>
       <div class="card-adjust-note" id="adjustNote" style="display:none;">* Positionnement final ajuste par nos techniciens</div>
     </div>
@@ -1386,6 +1397,31 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     persistInputsToActiveDesign();
     refreshStep3Gate();
   });
+
+  /* Step 3: apply min/max recommendation to the currently active design and re-render */
+  function applyRecoOnStep3(useMax) {
+    if (!designImg || !designImg.naturalWidth) return;
+    const wH = wallHeightM * 100, wW = wallWidthM * 100;
+    const pa = computePrintable(wH, wW, hasCeiling, hasLeftWall, hasRightWall);
+    const ratio = designImg.naturalWidth / designImg.naturalHeight;
+    let recH = pa.printableH, recW = recH * ratio, constrained = 'h';
+    if (recW > pa.printableW) { recW = pa.printableW; recH = recW / ratio; constrained = 'w'; }
+    if (useMax) {
+      const STRETCH = 1.5;
+      if (constrained === 'h') recW = Math.min(recW * STRETCH, pa.printableW);
+      else recH = Math.min(recH * STRETCH, pa.printableH);
+    }
+    designWcm = recW;
+    designHcm = recH;
+    /* Persist to active slot so it sticks across switches */
+    if (designs[activeDesignIdx]) designs[activeDesignIdx].sizeCm = { w: recW, h: recH };
+    /* Also sync the step 2 inputs so coming back is consistent */
+    $('designW').value = (recW / 100).toFixed(2);
+    $('designH').value = (recH / 100).toFixed(2);
+    renderPreviewStage();
+  }
+  $('step3UseReco').addEventListener('click', () => applyRecoOnStep3(false));
+  $('step3UseRecoMax').addEventListener('click', () => applyRecoOnStep3(true));
 
   /* Constrain manual input to max */
   ['designW', 'designH'].forEach(id => {
