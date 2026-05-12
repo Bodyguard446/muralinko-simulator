@@ -518,6 +518,43 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
 .divider { height: 1px; background: var(--mystic); margin: 10px 0; }
 
+/* ─── Multi-design thumbnails ─── */
+.design-thumbs {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.design-thumb {
+  position: relative; width: 64px; height: 64px;
+  border: 2px solid var(--geyser); border-radius: 8px;
+  background: var(--mystic) center / contain no-repeat;
+  cursor: pointer; transition: all var(--ease);
+  flex-shrink: 0;
+}
+.design-thumb:hover { border-color: var(--mint); }
+.design-thumb.active {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 2px rgba(0, 199, 143, 0.25);
+}
+.design-thumb .remove {
+  position: absolute; top: -6px; right: -6px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--midnight); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 1; cursor: pointer;
+  border: 2px solid #fff;
+  opacity: 0; transition: opacity var(--ease);
+}
+.design-thumb:hover .remove { opacity: 1; }
+.design-thumb-add {
+  width: 64px; height: 64px;
+  border: 2px dashed var(--geyser); border-radius: 8px;
+  background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gothic); font-size: 1.6rem; font-weight: 300;
+  transition: all var(--ease); flex-shrink: 0;
+}
+.design-thumb-add:hover { border-color: var(--mint); color: var(--mint); }
+.design-thumb-add.disabled { opacity: 0.3; cursor: not-allowed; }
+
 /* CTA section */
 .cta-card {
   background: var(--off-green);
@@ -654,6 +691,12 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     <input type="file" accept="image/*" hidden>
   </div>
 
+  <div id="designThumbsStrip" style="display:none;margin-top:16px;">
+    <div style="font-size:0.82rem;font-weight:500;color:var(--midnight);margin-bottom:8px;">Vos designs (jusqu'a 3)</div>
+    <div class="design-thumbs" id="designThumbs"></div>
+    <div style="font-size:0.74rem;color:var(--gothic);margin-top:6px;">Cliquez sur un design pour le selectionner. Etape 3 permettra de basculer entre eux.</div>
+  </div>
+
   <div class="card" id="step2Limits" style="margin-top:20px;">
     <div class="card-title">Limites d'impression</div>
     <div class="info-row"><span class="label">Largeur max</span><span class="value" id="limMaxW">—</span></div>
@@ -739,6 +782,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       <div class="warn" id="paWarn" style="display:none;"></div>
     </div>
 
+    <!-- Multi-design switcher (visible if >1 design) -->
+    <div class="card" id="step3Designs" style="display:none;">
+      <div class="card-title">Designs</div>
+      <div class="design-thumbs" id="designThumbs3"></div>
+      <div style="font-size:0.74rem;color:var(--gothic);margin-top:8px;">Cliquez pour basculer entre vos designs.</div>
+    </div>
+
     <!-- Actions card -->
     <div class="card">
       <div class="card-title">Actions</div>
@@ -778,7 +828,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 (() => {
   /* ─── State ─── */
   let wallImg = null, wallFile = null;
-  let designImg = null, designFile = null;
+  let designs = [];          // [{ img: Image, file: File, noBgImg: Image|null, bgScaleX: 1, bgScaleY: 1 }]
+  let activeDesignIdx = 0;   // index into designs[] of the currently displayed design
+  const MAX_DESIGNS = 3;
+  /* Legacy accessors — kept as getters for minimal refactor across the file */
+  function get_designImg() { return designs[activeDesignIdx]?.img || null; }
+  function get_designFile() { return designs[activeDesignIdx]?.file || null; }
+  let designImg = null, designFile = null;  // sync'd via syncActiveDesign()
   let wallHeightM = 2.5, wallWidthM = 3.3;
   let hasCeiling = true, hasLeftWall = false, hasRightWall = false;
   let designWcm = 100, designHcm = 100;
@@ -1060,14 +1116,124 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   });
   updateLivePreview();
   setupUpload('designUpload', (img, file) => {
-    designImg = img; designFile = file;
+    if (designs.length >= MAX_DESIGNS) return;
+    designs.push({ img, file, noBgImg: null, bgScaleX: 1, bgScaleY: 1 });
+    activeDesignIdx = designs.length - 1;
+    syncActiveDesign();
+    renderDesignThumbs();
     updateStep2Limits();
     refreshStep3Gate();
+    /* Hide the dropzone once we have a design, show only the thumb strip + add button */
+    updateDesignUploadVisibility();
   });
+
+  function syncActiveDesign() {
+    const d = designs[activeDesignIdx];
+    designImg = d?.img || null;
+    designFile = d?.file || null;
+    designImgNoBg = d?.noBgImg || null;
+    bgScaleX = d?.bgScaleX || 1;
+    bgScaleY = d?.bgScaleY || 1;
+    /* If toggle bgOn is active, reflect that this design has/lacks no-bg version */
+    if (bgOn && !designImgNoBg) {
+      /* Switched to a design that hasn't been bg-removed yet — turn bg off for now */
+      bgOn = false;
+      const span = $('toggleBg')?.querySelector('span');
+      if (span) span.textContent = 'Retirer fond';
+      $('toggleBg')?.classList.remove('active');
+    }
+  }
+
+  function setActiveDesign(idx) {
+    if (idx < 0 || idx >= designs.length) return;
+    activeDesignIdx = idx;
+    syncActiveDesign();
+    renderDesignThumbs();
+    /* If we're in step 3, swap the preview image */
+    if ($('step3').classList.contains('active') && designImg) {
+      const designEl = $('previewDesign');
+      designEl.src = bgOn && designImgNoBg ? designImgNoBg.src : designImg.src;
+      designEl.onload = () => renderPreviewStage();
+    }
+  }
+
+  function removeDesign(idx) {
+    designs.splice(idx, 1);
+    if (designs.length === 0) {
+      activeDesignIdx = 0;
+      syncActiveDesign();
+      renderDesignThumbs();
+      updateDesignUploadVisibility();
+      refreshStep3Gate();
+      return;
+    }
+    if (activeDesignIdx >= designs.length) activeDesignIdx = designs.length - 1;
+    syncActiveDesign();
+    renderDesignThumbs();
+    updateDesignUploadVisibility();
+    refreshStep3Gate();
+  }
+
+  function renderDesignThumbs() {
+    const strip = $('designThumbsStrip');
+    const thumbs = $('designThumbs');
+    const thumbs3 = $('designThumbs3');
+    if (designs.length === 0) {
+      strip.style.display = 'none';
+      if (thumbs3) $('step3Designs').style.display = 'none';
+      return;
+    }
+    strip.style.display = 'block';
+    /* Show step3 multi-design card only if >= 2 designs */
+    if (thumbs3) $('step3Designs').style.display = designs.length >= 2 ? 'block' : 'none';
+
+    const buildThumb = (d, i, inStep3) => {
+      const el = document.createElement('div');
+      el.className = 'design-thumb' + (i === activeDesignIdx ? ' active' : '');
+      el.style.backgroundImage = `url(${d.img.src})`;
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove')) return;
+        setActiveDesign(i);
+      });
+      if (!inStep3) {
+        const rm = document.createElement('div');
+        rm.className = 'remove';
+        rm.textContent = '×';
+        rm.title = 'Retirer ce design';
+        rm.addEventListener('click', (e) => { e.stopPropagation(); removeDesign(i); });
+        el.appendChild(rm);
+      }
+      return el;
+    };
+    thumbs.innerHTML = '';
+    designs.forEach((d, i) => thumbs.appendChild(buildThumb(d, i, false)));
+    /* "+" button in step 2 only */
+    if (designs.length < MAX_DESIGNS) {
+      const add = document.createElement('div');
+      add.className = 'design-thumb-add';
+      add.textContent = '+';
+      add.title = 'Ajouter un design';
+      add.addEventListener('click', () => {
+        /* Trigger the hidden file input in the upload zone */
+        document.querySelector('#designUpload input')?.click();
+      });
+      thumbs.appendChild(add);
+    }
+    if (thumbs3) {
+      thumbs3.innerHTML = '';
+      designs.forEach((d, i) => thumbs3.appendChild(buildThumb(d, i, true)));
+    }
+  }
+
+  function updateDesignUploadVisibility() {
+    /* Hide the big drop zone once we have at least one design — the "+" thumb takes over */
+    const zone = $('designUpload');
+    zone.style.display = designs.length === 0 ? 'block' : 'none';
+  }
 
   function refreshStep3Gate() {
     const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
-    $('toStep3').disabled = !(designImg && dw > 0 && dh > 0);
+    $('toStep3').disabled = !(designs.length > 0 && dw > 0 && dh > 0);
   }
   ['designW', 'designH'].forEach(id => {
     $(id).addEventListener('input', refreshStep3Gate);
@@ -1171,7 +1337,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     if (step === 3) {
       /* Show loader first, then render after browser paints it */
       $('canvasLoader').classList.remove('hidden');
+      renderDesignThumbs();
       setTimeout(() => initPreview(), 400);
+    }
+    if (step === 2) {
+      /* Sync thumb strip in case user came back from step 3 */
+      renderDesignThumbs();
+      updateDesignUploadVisibility();
     }
     window.scrollTo({ top: 0 });
   }
@@ -1490,6 +1662,12 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       const bbox = detectContentBbox(designImgNoBg);
       bgScaleX = bbox.fullW / bbox.w;
       bgScaleY = bbox.fullH / bbox.h;
+      /* Persist on the active design so switching back keeps the no-bg version */
+      if (designs[activeDesignIdx]) {
+        designs[activeDesignIdx].noBgImg = designImgNoBg;
+        designs[activeDesignIdx].bgScaleX = bgScaleX;
+        designs[activeDesignIdx].bgScaleY = bgScaleY;
+      }
       bgOn = true;
       setBgBtnLabel('Avec fond');
       btn.classList.add('active');
