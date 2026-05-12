@@ -520,7 +520,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
 /* ─── Multi-design thumbnails ─── */
 .design-thumbs {
-  display: flex; gap: 8px; flex-wrap: wrap;
+  display: flex; gap: 10px; flex-wrap: wrap;
 }
 .design-thumb {
   position: relative; width: 64px; height: 64px;
@@ -544,16 +544,35 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   opacity: 0; transition: opacity var(--ease);
 }
 .design-thumb:hover .remove { opacity: 1; }
+
+/* Step 2: larger slot variant so users see them clearly from the start */
+.design-slots-step2 { gap: 14px; }
+.design-slots-step2 .design-thumb,
+.design-slots-step2 .design-thumb-add { width: 108px; height: 108px; }
+
 .design-thumb-add {
+  position: relative;
   width: 64px; height: 64px;
   border: 2px dashed var(--geyser); border-radius: 8px;
   background: transparent; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--gothic); font-size: 1.6rem; font-weight: 300;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--gothic);
   transition: all var(--ease); flex-shrink: 0;
+  gap: 2px;
 }
-.design-thumb-add:hover { border-color: var(--mint); color: var(--mint); }
+.design-thumb-add .plus { font-size: 1.8rem; font-weight: 300; line-height: 1; }
+.design-thumb-add .label { font-size: 0.66rem; font-weight: 500; }
+.design-thumb-add:hover {
+  border-color: var(--mint); color: var(--mint);
+  background: var(--off-green);
+}
 .design-thumb-add.disabled { opacity: 0.3; cursor: not-allowed; }
+.design-thumb-add.dragover {
+  border-color: var(--mint); border-style: solid;
+  background: var(--off-green); color: var(--mint);
+}
+.design-thumb-add.loading { cursor: wait; }
 
 /* CTA section */
 .cta-card {
@@ -684,18 +703,15 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   <h2 class="panel-title">Votre design</h2>
   <p class="panel-desc">Importez l'image que vous souhaitez imprimer sur votre mur.</p>
 
-  <div class="upload-zone" id="designUpload">
-    <span class="icon">&#127912;</span>
-    <div class="label">Glissez votre design ici ou cliquez</div>
-    <div class="hint">JPG ou PNG — fond transparent ideal</div>
+  <!-- Hidden legacy upload zone (kept as a drop target fallback + holds the original file input) -->
+  <div class="upload-zone" id="designUpload" style="display:none;">
     <input type="file" accept="image/*" hidden>
   </div>
-  <div style="font-size:0.78rem;color:var(--gothic);margin-top:8px;text-align:center;">Vous pourrez ajouter jusqu'a 3 designs pour les comparer ensuite.</div>
 
-  <div id="designThumbsStrip" style="display:none;margin-top:16px;">
-    <div style="font-size:0.82rem;font-weight:500;color:var(--midnight);margin-bottom:8px;">Vos designs (jusqu'a 3)</div>
-    <div class="design-thumbs" id="designThumbs"></div>
-    <div style="font-size:0.74rem;color:var(--gothic);margin-top:6px;">Cliquez sur un design pour le selectionner. Etape 3 permettra de basculer entre eux.</div>
+  <div id="designThumbsStrip" style="margin-top:8px;">
+    <div style="font-size:0.85rem;font-weight:500;color:var(--midnight);margin-bottom:10px;">Vos designs <span style="color:var(--gothic);font-weight:400;">(jusqu'a 3 a comparer)</span></div>
+    <div class="design-thumbs design-slots-step2" id="designThumbs"></div>
+    <div style="font-size:0.74rem;color:var(--gothic);margin-top:8px;line-height:1.5;">Cliquez un emplacement pour ajouter un design. Glissez-deposez aussi possible. Vous pourrez basculer entre eux a l'etape 3.</div>
   </div>
 
   <div class="card" id="step2Limits" style="margin-top:20px;">
@@ -1127,6 +1143,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     $(id).addEventListener('change', () => { updateLivePreview(); refreshContinueGate(); });
   });
   updateLivePreview();
+  /* Render the 3 empty design slots on initial load so they're visible from the start */
+  renderDesignThumbs();
   function onDesignUploaded(img, file) {
     if (designs.length >= MAX_DESIGNS) return;
     /* Each design has its own desired size (cm); null until first recommendation auto-fills */
@@ -1264,19 +1282,12 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   }
 
   function renderDesignThumbs() {
-    const strip = $('designThumbsStrip');
     const thumbs = $('designThumbs');
     const thumbs3 = $('designThumbs3');
-    if (designs.length === 0) {
-      strip.style.display = 'none';
-      if (thumbs3) $('step3Designs').style.display = 'none';
-      return;
-    }
-    strip.style.display = 'block';
     /* Show step3 multi-design card only if >= 2 designs */
     if (thumbs3) $('step3Designs').style.display = designs.length >= 2 ? 'block' : 'none';
 
-    const buildThumb = (d, i, inStep3) => {
+    const buildFilled = (d, i, inStep3) => {
       const el = document.createElement('div');
       el.className = 'design-thumb' + (i === activeDesignIdx ? ' active' : '');
       el.style.backgroundImage = `url(${d.img.src})`;
@@ -1294,30 +1305,45 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       }
       return el;
     };
-    thumbs.innerHTML = '';
-    designs.forEach((d, i) => thumbs.appendChild(buildThumb(d, i, false)));
-    /* "+" button in step 2 only */
-    if (designs.length < MAX_DESIGNS) {
+
+    const buildPlaceholder = (slotIdx) => {
       const add = document.createElement('div');
       add.className = 'design-thumb-add';
-      add.textContent = '+';
       add.title = 'Ajouter un design';
-      add.addEventListener('click', (e) => {
-        e.stopPropagation();
-        pickAnotherDesign();
+      add.innerHTML = '<div class="plus">+</div><div class="label">Design ' + (slotIdx + 1) + '</div>';
+      add.addEventListener('click', (e) => { e.stopPropagation(); pickAnotherDesign(); });
+      /* Drag-drop on the placeholder */
+      add.addEventListener('dragover', (e) => { e.preventDefault(); add.classList.add('dragover'); });
+      add.addEventListener('dragleave', () => add.classList.remove('dragover'));
+      add.addEventListener('drop', (e) => {
+        e.preventDefault();
+        add.classList.remove('dragover');
+        const file = e.dataTransfer.files?.[0];
+        if (!file || !file.type.startsWith('image/')) return;
+        const img = new Image();
+        img.onload = () => onDesignUploaded(img, file);
+        img.src = URL.createObjectURL(file);
       });
-      thumbs.appendChild(add);
+      return add;
+    };
+
+    /* Step 2 strip: always render MAX_DESIGNS slots — filled or placeholders */
+    thumbs.innerHTML = '';
+    for (let i = 0; i < MAX_DESIGNS; i++) {
+      if (i < designs.length) thumbs.appendChild(buildFilled(designs[i], i, false));
+      else thumbs.appendChild(buildPlaceholder(i));
     }
+
+    /* Step 3 strip: only filled designs (no placeholders) */
     if (thumbs3) {
       thumbs3.innerHTML = '';
-      designs.forEach((d, i) => thumbs3.appendChild(buildThumb(d, i, true)));
+      designs.forEach((d, i) => thumbs3.appendChild(buildFilled(d, i, true)));
     }
   }
 
   function updateDesignUploadVisibility() {
-    /* Hide the big drop zone once we have at least one design — the "+" thumb takes over */
-    const zone = $('designUpload');
-    zone.style.display = designs.length === 0 ? 'block' : 'none';
+    /* The legacy big drop zone is now permanently hidden — kept only to hold the original file input
+       used by the old code path. The 3-slot strip is always visible and handles all upload UX. */
   }
 
   function refreshStep3Gate() {
