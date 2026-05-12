@@ -658,7 +658,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   </div>
 
   <div class="wall-calibrator" id="wallCalibrator" style="display:none;">
-    <p class="calib-help"><strong>Definissez les 4 coins du mur</strong> en deplacant les pastilles vertes. Cela permet un rendu perspective fidele a votre photo.</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+      <p class="calib-help" style="margin:0;flex:1;"><strong>Definissez les 4 coins du mur</strong> en deplacant les pastilles vertes.</p>
+      <button class="btn btn-outline" id="autoDetectBtn" type="button" style="font-size:0.78rem;padding:8px 14px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span>Detecter auto</span>
+      </button>
+    </div>
     <div class="calib-stage" id="calibStage">
       <img id="calibImg" alt="Mur">
       <svg class="calib-svg" id="calibSvg" preserveAspectRatio="none" viewBox="0 0 100 100"><polygon id="calibPoly" points=""/></svg>
@@ -1124,6 +1130,102 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   document.addEventListener('touchmove', calibMove, { passive: false });
   document.addEventListener('touchend', calibUp);
   window.addEventListener('resize', () => { updateCalibrator(); if ($('step3').classList.contains('active')) renderPreviewStage(); });
+
+  /* ─── Auto-detect wall corners (v1: color-uniform bounding box) ─── */
+  async function autoDetectWallCorners() {
+    if (!wallImg) return;
+    const btn = $('autoDetectBtn');
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.querySelector('span').textContent = 'Detection...';
+    /* Yield to UI so the loading state renders */
+    await new Promise(r => setTimeout(r, 50));
+
+    try {
+      const targetW = 256;
+      const scale = wallImg.naturalWidth / targetW;
+      const w = targetW;
+      const h = Math.round(wallImg.naturalHeight / scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(wallImg, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      /* Sample average color in central 30% — assumes wall is in the middle */
+      const cx = w/2, cy = h/2;
+      const sampleR = Math.floor(Math.min(w, h) * 0.15);
+      let sumR = 0, sumG = 0, sumB = 0, count = 0;
+      for (let y = cy - sampleR; y < cy + sampleR; y++) {
+        for (let x = cx - sampleR; x < cx + sampleR; x++) {
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const i = (Math.floor(y) * w + Math.floor(x)) * 4;
+          sumR += d[i]; sumG += d[i+1]; sumB += d[i+2];
+          count++;
+        }
+      }
+      const avgR = sumR/count, avgG = sumG/count, avgB = sumB/count;
+
+      /* Find pixels similar to avg color (within tolerance) — these are "wall" pixels */
+      const TOL = 65;
+      const TOL2 = TOL * TOL;
+      const mask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const j = i * 4;
+        const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
+        mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
+      }
+
+      /* Find the connected component containing the center (flood-fill BFS) */
+      const centerIdx = Math.floor(cy) * w + Math.floor(cx);
+      if (!mask[centerIdx]) {
+        throw new Error('center-not-wall');
+      }
+      const visited = new Uint8Array(w * h);
+      const queue = [centerIdx];
+      visited[centerIdx] = 1;
+      let minX = w, minY = h, maxX = -1, maxY = -1;
+      while (queue.length) {
+        const i = queue.pop();
+        const px = i % w, py = (i / w) | 0;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+        const neighbors = [i - 1, i + 1, i - w, i + w];
+        for (const n of neighbors) {
+          if (n < 0 || n >= w * h) continue;
+          /* Prevent wraparound on row boundaries */
+          if (n === i - 1 && px === 0) continue;
+          if (n === i + 1 && px === w - 1) continue;
+          if (!visited[n] && mask[n]) { visited[n] = 1; queue.push(n); }
+        }
+      }
+      if (maxX < 0) throw new Error('empty-region');
+
+      /* Convert bounding box to fractions */
+      wallCorners = [
+        { x: minX/w, y: minY/h },
+        { x: maxX/w, y: minY/h },
+        { x: maxX/w, y: maxY/h },
+        { x: minX/w, y: maxY/h }
+      ];
+      updateCalibrator();
+      btn.querySelector('span').textContent = 'Detecte !';
+      setTimeout(() => { btn.querySelector('span').textContent = 'Detecter auto'; }, 1500);
+    } catch (e) {
+      console.warn('Auto-detect failed:', e.message);
+      btn.querySelector('span').textContent = 'Echec';
+      setTimeout(() => { btn.querySelector('span').textContent = 'Detecter auto'; }, 1500);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#autoDetectBtn')) autoDetectWallCorners();
+  });
 
   /* ─── Live printable preview on step 1 ─── */
   function updateLivePreview() {
