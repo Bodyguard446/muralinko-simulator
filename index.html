@@ -690,6 +690,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     <div class="hint">JPG ou PNG — fond transparent ideal</div>
     <input type="file" accept="image/*" hidden>
   </div>
+  <div style="font-size:0.78rem;color:var(--gothic);margin-top:8px;text-align:center;">Vous pourrez ajouter jusqu'a 3 designs pour les comparer ensuite.</div>
 
   <div id="designThumbsStrip" style="display:none;margin-top:16px;">
     <div style="font-size:0.82rem;font-weight:500;color:var(--midnight);margin-bottom:8px;">Vos designs (jusqu'a 3)</div>
@@ -1115,7 +1116,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     $(id).addEventListener('change', () => { updateLivePreview(); refreshContinueGate(); });
   });
   updateLivePreview();
-  setupUpload('designUpload', (img, file) => {
+  function onDesignUploaded(img, file) {
     if (designs.length >= MAX_DESIGNS) return;
     designs.push({ img, file, noBgImg: null, bgScaleX: 1, bgScaleY: 1 });
     activeDesignIdx = designs.length - 1;
@@ -1123,9 +1124,28 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     renderDesignThumbs();
     updateStep2Limits();
     refreshStep3Gate();
-    /* Hide the dropzone once we have a design, show only the thumb strip + add button */
     updateDesignUploadVisibility();
-  });
+  }
+  setupUpload('designUpload', onDesignUploaded);
+
+  /* Pick another design via an isolated input, avoiding accumulated click listeners on the original zone */
+  function pickAnotherDesign() {
+    if (designs.length >= MAX_DESIGNS) return;
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', () => {
+      if (!inp.files.length) { inp.remove(); return; }
+      const file = inp.files[0];
+      const img = new Image();
+      img.onload = () => { onDesignUploaded(img, file); inp.remove(); };
+      img.onerror = () => inp.remove();
+      img.src = URL.createObjectURL(file);
+    });
+    inp.click();
+  }
 
   function syncActiveDesign() {
     const d = designs[activeDesignIdx];
@@ -1213,9 +1233,9 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       add.className = 'design-thumb-add';
       add.textContent = '+';
       add.title = 'Ajouter un design';
-      add.addEventListener('click', () => {
-        /* Trigger the hidden file input in the upload zone */
-        document.querySelector('#designUpload input')?.click();
+      add.addEventListener('click', (e) => {
+        e.stopPropagation();
+        pickAnotherDesign();
       });
       thumbs.appendChild(add);
     }
