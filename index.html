@@ -1131,7 +1131,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   document.addEventListener('touchend', calibUp);
   window.addEventListener('resize', () => { updateCalibrator(); if ($('step3').classList.contains('active')) renderPreviewStage(); });
 
-  /* ─── Auto-detect wall corners (v2: multi-sample color + morphological closing + largest region) ─── */
+  /* ─── Auto-detect wall corners (v3: adaptive tol + flood-fill from center + morpho closing) ─── */
   async function autoDetectWallCorners() {
     if (!wallImg) return;
     const btn = $('autoDetectBtn');
@@ -1150,48 +1150,48 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       c.getContext('2d').drawImage(wallImg, 0, 0, w, h);
       const d = c.getContext('2d').getImageData(0, 0, w, h).data;
 
-      /* Sample average wall color from 5 inset points (center + 4 corners at 30% inset) —
-         more robust than just the center if the camera is tilted */
-      const samplePts = [
-        [w/2, h/2],
-        [w*0.3, h*0.3], [w*0.7, h*0.3],
-        [w*0.3, h*0.7], [w*0.7, h*0.7]
-      ];
+      /* Sample average wall color near the geometric center */
+      const cx = Math.floor(w/2), cy = Math.floor(h/2);
+      const R = Math.floor(Math.min(w, h) * 0.08);
       let sumR = 0, sumG = 0, sumB = 0, count = 0;
-      const R = Math.floor(Math.min(w, h) * 0.06);
-      for (const [px, py] of samplePts) {
-        for (let y = py - R; y < py + R; y++) {
-          for (let x = px - R; x < px + R; x++) {
-            if (x < 0 || y < 0 || x >= w || y >= h) continue;
-            const i = (Math.floor(y) * w + Math.floor(x)) * 4;
-            sumR += d[i]; sumG += d[i+1]; sumB += d[i+2]; count++;
-          }
+      for (let y = cy - R; y < cy + R; y++) {
+        for (let x = cx - R; x < cx + R; x++) {
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const i = (y * w + x) * 4;
+          sumR += d[i]; sumG += d[i+1]; sumB += d[i+2]; count++;
         }
       }
       const avgR = sumR/count, avgG = sumG/count, avgB = sumB/count;
 
-      /* Mask: pixels close to wall color */
-      const TOL = 90, TOL2 = TOL * TOL;
-      let mask = new Uint8Array(w * h);
-      for (let i = 0; i < w * h; i++) {
-        const j = i * 4;
-        const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
-        mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
+      /* Try a sequence of tolerances; pick the result whose region fills 15-55% of the image */
+      const tolCandidates = [35, 50, 65, 80, 100];
+      let best = null;
+      for (const TOL of tolCandidates) {
+        const TOL2 = TOL * TOL;
+        let mask = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+          const j = i * 4;
+          const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
+          mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
+        }
+        mask = dilate(mask, w, h, 2);
+        mask = erode(mask, w, h, 2);
+        const reg = regionFromCenter(mask, w, h, cx, cy);
+        if (!reg) continue;
+        const frac = reg.size / (w * h);
+        const score = (frac >= 0.15 && frac <= 0.55) ? 1 - Math.abs(frac - 0.35) : (frac < 0.15 ? frac * 2 : 0);
+        if (!best || score > best.score) best = { reg, frac, TOL, score };
+        /* Early exit if we already have a good region in the sweet spot */
+        if (frac >= 0.18 && frac <= 0.50) break;
       }
+      if (!best || !best.reg) throw new Error('no-region');
 
-      /* Morphological closing (dilate then erode) — fills small holes / bridges gaps */
-      mask = dilate(mask, w, h, 2);
-      mask = erode(mask, w, h, 2);
-
-      /* Find the LARGEST connected region (not just from center) */
-      const region = largestRegion(mask, w, h);
-      if (!region || region.size < (w * h * 0.05)) throw new Error('no-region');
-
+      const r = best.reg;
       wallCorners = [
-        { x: region.minX/w, y: region.minY/h },
-        { x: region.maxX/w, y: region.minY/h },
-        { x: region.maxX/w, y: region.maxY/h },
-        { x: region.minX/w, y: region.maxY/h }
+        { x: r.minX/w, y: r.minY/h },
+        { x: r.maxX/w, y: r.minY/h },
+        { x: r.maxX/w, y: r.maxY/h },
+        { x: r.minX/w, y: r.maxY/h }
       ];
       updateCalibrator();
       btn.querySelector('span').textContent = 'Detecte !';
@@ -1204,6 +1204,29 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       btn.disabled = false;
       btn.classList.remove('loading');
     }
+  }
+
+  function regionFromCenter(mask, w, h, cx, cy) {
+    const startIdx = cy * w + cx;
+    if (!mask[startIdx]) return null;
+    const visited = new Uint8Array(w * h);
+    const queue = [startIdx];
+    visited[startIdx] = 1;
+    let minX = w, minY = h, maxX = -1, maxY = -1, size = 0;
+    while (queue.length) {
+      const i = queue.pop();
+      const px = i % w, py = (i / w) | 0;
+      size++;
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+      if (px > 0 && !visited[i-1] && mask[i-1]) { visited[i-1] = 1; queue.push(i-1); }
+      if (px < w-1 && !visited[i+1] && mask[i+1]) { visited[i+1] = 1; queue.push(i+1); }
+      if (py > 0 && !visited[i-w] && mask[i-w]) { visited[i-w] = 1; queue.push(i-w); }
+      if (py < h-1 && !visited[i+w] && mask[i+w]) { visited[i+w] = 1; queue.push(i+w); }
+    }
+    return { minX, minY, maxX, maxY, size };
   }
 
   function dilate(mask, w, h, r) {
