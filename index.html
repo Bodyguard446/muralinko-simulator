@@ -306,8 +306,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .preview-stage img.lighting-overlay {
   position: absolute; top: 0; left: 0;
   transform-origin: 0 0;
-  filter: blur(60px) grayscale(0.6) contrast(1.4) brightness(1.02);
-  mix-blend-mode: overlay;
+  filter: blur(50px) grayscale(1) contrast(1.6) brightness(1.4);
+  mix-blend-mode: multiply;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -2015,12 +2015,12 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       const lit = document.createElement('canvas');
       lit.width = natW; lit.height = natH;
       const lc = lit.getContext('2d');
-      const blurPx = Math.round(60 * (natW / 800));
-      lc.filter = `blur(${blurPx}px) grayscale(0.6) contrast(1.4) brightness(1.02)`;
+      const blurPx = Math.round(50 * (natW / 800));
+      lc.filter = `blur(${blurPx}px) grayscale(1) contrast(1.6) brightness(1.4)`;
       lc.drawImage(wallImg, 0, 0, natW, natH);
       const Sw = [{x:0,y:0},{x:natW,y:0},{x:natW,y:natH},{x:0,y:natH}];
       ec.save();
-      ec.globalCompositeOperation = 'overlay';
+      ec.globalCompositeOperation = 'multiply';
       ec.globalAlpha = lightingIntensity;
       drawTexturedTriangle(ec, lit, [Sw[0],Sw[1],Sw[2]], [D[0],D[1],D[2]]);
       drawTexturedTriangle(ec, lit, [Sw[0],Sw[2],Sw[3]], [D[0],D[2],D[3]]);
