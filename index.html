@@ -305,13 +305,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .preview-stage img.design-img.dragging { cursor: grabbing; }
 .preview-stage img.lighting-overlay {
   position: absolute; top: 0; left: 0;
-  width: 100%; height: auto;
-  filter: blur(45px) grayscale(0.5) contrast(1.35) brightness(1.02);
+  transform-origin: 0 0;
+  filter: blur(60px) grayscale(0.6) contrast(1.4) brightness(1.02);
   mix-blend-mode: overlay;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
-  will-change: clip-path;
+  will-change: transform;
 }
 
 /* Lighting intensity slider */
@@ -1678,12 +1678,20 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const poly = Z.map(p => `${(p.x/sw)*100},${(p.y/sh)*100}`).join(' ');
     $('printablePoly').setAttribute('points', poly);
 
-    /* Lighting overlay: clip the wall-copy to the design quad so it only modulates that area */
+    /* Lighting overlay: project the ENTIRE wall image into the design quad via perspective.
+       This way the design inherits the wall's full lighting pattern (not just the patch directly behind it). */
     const lightEl = $('previewLighting');
-    if (lightEl) {
-      const clipPoly = D.map(p => `${p.x}px ${p.y}px`).join(', ');
-      lightEl.style.clipPath = `polygon(${clipPoly})`;
-      lightEl.style.webkitClipPath = `polygon(${clipPoly})`;
+    if (lightEl && wallImg && wallImg.naturalWidth) {
+      const wW = wallImg.naturalWidth, wH = wallImg.naturalHeight;
+      lightEl.style.width = wW + 'px';
+      lightEl.style.height = wH + 'px';
+      const Hl = homography(
+        [{x:0,y:0},{x:wW,y:0},{x:wW,y:wH},{x:0,y:wH}],
+        D
+      );
+      if (Hl) lightEl.style.transform = homographyToMatrix3d(Hl);
+      lightEl.style.clipPath = '';
+      lightEl.style.webkitClipPath = '';
     }
 
     /* Scale ruler at the bottom of the wall: 1m segments with 10cm ticks */
@@ -2002,26 +2010,20 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
     ec.globalCompositeOperation = 'source-over';
 
-    /* Lighting transfer: warp a blurred wall onto the design quad with overlay blend.
-       Blur radius is scaled to the export image size to keep the same visual character at high-res. */
+    /* Lighting transfer: project the ENTIRE blurred wall into the design quad via 2-triangle warp. */
     if (lightingOn) {
       const lit = document.createElement('canvas');
       lit.width = natW; lit.height = natH;
       const lc = lit.getContext('2d');
-      const blurPx = Math.round(45 * (natW / 800));
-      lc.filter = `blur(${blurPx}px) grayscale(0.5) contrast(1.35) brightness(1.02)`;
+      const blurPx = Math.round(60 * (natW / 800));
+      lc.filter = `blur(${blurPx}px) grayscale(0.6) contrast(1.4) brightness(1.02)`;
       lc.drawImage(wallImg, 0, 0, natW, natH);
+      const Sw = [{x:0,y:0},{x:natW,y:0},{x:natW,y:natH},{x:0,y:natH}];
       ec.save();
-      ec.beginPath();
-      ec.moveTo(D[0].x, D[0].y);
-      ec.lineTo(D[1].x, D[1].y);
-      ec.lineTo(D[2].x, D[2].y);
-      ec.lineTo(D[3].x, D[3].y);
-      ec.closePath();
-      ec.clip();
       ec.globalCompositeOperation = 'overlay';
       ec.globalAlpha = lightingIntensity;
-      ec.drawImage(lit, 0, 0);
+      drawTexturedTriangle(ec, lit, [Sw[0],Sw[1],Sw[2]], [D[0],D[1],D[2]]);
+      drawTexturedTriangle(ec, lit, [Sw[0],Sw[2],Sw[3]], [D[0],D[2],D[3]]);
       ec.restore();
     }
 
