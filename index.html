@@ -332,39 +332,70 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .magnifier::after  { top: 50%; left: 0; height: 1px; width: 100%; }
 
 /* Toggle button row */
-.toggle-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.toggle-row .btn { flex: 1; font-size: 0.78rem; padding: 8px 6px; }
-.toggle-row .btn.active { background: var(--midnight); color: #fff; border-color: var(--midnight); }
+.toggle-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.toggle-row .btn { flex: 1; font-size: 0.8rem; padding: 10px 8px; gap: 6px; min-width: 0; }
+.toggle-row .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.toggle-row .btn.active {
+  background: var(--midnight); color: #fff; border-color: var(--midnight);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
+}
+.toggle-row .btn.active svg { color: var(--mint); }
 
 /* ─── Buttons ─── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px 28px;
+  gap: 8px;
+  padding: 12px 24px;
   border: none;
   border-radius: var(--radius);
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--ease);
+  transition: transform 0.15s cubic-bezier(0.4,0,0.2,1),
+              box-shadow 0.2s cubic-bezier(0.4,0,0.2,1),
+              background 0.2s, color 0.2s, border-color 0.2s;
+  position: relative;
+  white-space: nowrap;
 }
+.btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
 .btn-mint {
   background: var(--mint);
-  color: #000;
+  color: var(--midnight);
+  box-shadow: 0 1px 2px rgba(0,71,86,0.12), 0 2px 8px rgba(0,199,143,0.18);
 }
-.btn-mint:hover { background: var(--shamrock); }
-.btn-mint:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-mint:hover:not(:disabled) {
+  background: var(--shamrock);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,71,86,0.14), 0 6px 16px rgba(0,199,143,0.32);
+}
+.btn-mint:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
 .btn-outline {
   background: transparent;
   color: var(--midnight);
   border: 1.5px solid var(--geyser);
 }
-.btn-outline:hover { border-color: var(--mint); color: var(--mint); }
+.btn-outline:hover:not(:disabled) {
+  background: var(--off-green);
+  border-color: var(--mint);
+  color: var(--midnight);
+}
+.btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .btn-block { width: 100%; }
-.btn-lg { padding: 14px 32px; font-size: 1.05rem; }
+.btn-lg { padding: 14px 32px; font-size: 1.02rem; }
+.btn-lg svg { width: 18px; height: 18px; }
+
+/* Loading spinner state */
+.btn.loading { pointer-events: none; opacity: 0.85; }
+.btn.loading svg { animation: btnSpin 0.8s linear infinite; }
+@keyframes btnSpin { to { transform: rotate(360deg); } }
 
 .actions-row {
   display: flex;
@@ -604,7 +635,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   </div>
 
   <div class="actions-row">
-    <button class="btn btn-mint btn-block btn-lg" id="toStep2" disabled>Continuer</button>
+    <button class="btn btn-mint btn-block btn-lg" id="toStep2" disabled>
+      <span>Continuer</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </button>
   </div>
 </section>
 
@@ -641,13 +675,25 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     </div>
   </div>
   <div style="display:flex;gap:8px;margin-top:10px;">
-    <button class="btn btn-outline" id="useReco" type="button" style="flex:1;display:none;font-size:0.82rem;padding:8px;">Taille min (sans deformation)</button>
-    <button class="btn btn-outline" id="useRecoMax" type="button" style="flex:1;display:none;font-size:0.82rem;padding:8px;">Taille max (etirement tolere)</button>
+    <button class="btn btn-outline" id="useReco" type="button" style="flex:1;display:none;font-size:0.82rem;padding:10px 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <span>Taille min</span>
+    </button>
+    <button class="btn btn-outline" id="useRecoMax" type="button" style="flex:1;display:none;font-size:0.82rem;padding:10px 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      <span>Taille max</span>
+    </button>
   </div>
 
   <div class="actions-row">
-    <button class="btn btn-outline" id="backTo1">Retour</button>
-    <button class="btn btn-mint btn-block btn-lg" id="toStep3" disabled>Voir l'apercu</button>
+    <button class="btn btn-outline" id="backTo1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      <span>Retour</span>
+    </button>
+    <button class="btn btn-mint btn-block btn-lg" id="toStep3" disabled>
+      <span>Voir l'apercu</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
   </div>
 </section>
 
@@ -697,11 +743,23 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     <div class="card">
       <div class="card-title">Actions</div>
       <div class="toggle-row">
-        <button class="btn btn-outline" id="toggleCompare" type="button">Comparer (mur seul)</button>
-        <button class="btn btn-outline" id="toggleBg" type="button">Retirer le fond</button>
+        <button class="btn btn-outline" id="toggleCompare" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>Mur seul</span>
+        </button>
+        <button class="btn btn-outline" id="toggleBg" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
+          <span>Retirer fond</span>
+        </button>
       </div>
-      <button class="btn btn-mint btn-block" id="downloadBtn" style="margin-top:10px;">&#8595; Telecharger l'apercu</button>
-      <button class="btn btn-outline btn-block" id="backTo2" style="margin-top:8px;">&#8592; Modifier</button>
+      <button class="btn btn-mint btn-block btn-lg" id="downloadBtn" style="margin-top:14px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Telecharger l'apercu</span>
+      </button>
+      <button class="btn btn-outline btn-block" id="backTo2" style="margin-top:8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        <span>Modifier</span>
+      </button>
     </div>
 
     <!-- CTA card -->
@@ -1352,7 +1410,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   $('toggleCompare').addEventListener('click', () => {
     compareOn = !compareOn;
     $('previewDesign').style.opacity = compareOn ? '0' : '1';
-    $('toggleCompare').textContent = compareOn ? 'Afficher le design' : 'Comparer (mur seul)';
+    $('toggleCompare').querySelector('span').textContent = compareOn ? 'Voir design' : 'Mur seul';
     $('toggleCompare').classList.toggle('active', compareOn);
   });
 
@@ -1389,13 +1447,17 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     return window._imglyBgRemoval;
   }
 
+  function setBgBtnLabel(text) {
+    const span = $('toggleBg').querySelector('span');
+    if (span) span.textContent = text;
+  }
   async function removeBgML(imgSrc) {
     const removeBackground = await loadBgRemovalLib();
     const blob = await removeBackground(imgSrc, {
       output: { format: 'image/png', quality: 0.9 },
       progress: (key, current, total) => {
         const pct = Math.round((current / total) * 100);
-        $('toggleBg').textContent = `Traitement... ${pct}%`;
+        setBgBtnLabel(`Traitement... ${pct}%`);
       }
     });
     const url = URL.createObjectURL(blob);
@@ -1412,7 +1474,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     /* If we already have the no-bg version, just toggle */
     if (designImgNoBg) {
       bgOn = !bgOn;
-      $('toggleBg').textContent = bgOn ? 'Restaurer le fond' : 'Retirer le fond';
+      setBgBtnLabel(bgOn ? 'Avec fond' : 'Retirer fond');
       $('toggleBg').classList.toggle('active', bgOn);
       $('previewDesign').src = bgOn ? designImgNoBg.src : designImg.src;
       $('previewDesign').onload = () => renderPreviewStage();
@@ -1422,21 +1484,21 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     bgRemovalLoading = true;
     const btn = $('toggleBg');
     btn.disabled = true;
-    btn.textContent = 'Chargement du modele...';
+    setBgBtnLabel('Chargement...');
     try {
       designImgNoBg = await removeBgML(designImg.src);
       const bbox = detectContentBbox(designImgNoBg);
       bgScaleX = bbox.fullW / bbox.w;
       bgScaleY = bbox.fullH / bbox.h;
       bgOn = true;
-      btn.textContent = 'Restaurer le fond';
+      setBgBtnLabel('Avec fond');
       btn.classList.add('active');
       $('previewDesign').src = designImgNoBg.src;
       $('previewDesign').onload = () => renderPreviewStage();
     } catch (e) {
       console.error('BG removal failed:', e);
-      btn.textContent = 'Echec — reessayer';
-      setTimeout(() => { btn.textContent = 'Retirer le fond'; }, 2500);
+      setBgBtnLabel('Echec - reessayer');
+      setTimeout(() => setBgBtnLabel('Retirer fond'), 2500);
     } finally {
       btn.disabled = false;
       bgRemovalLoading = false;
