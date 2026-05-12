@@ -1131,7 +1131,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   document.addEventListener('touchend', calibUp);
   window.addEventListener('resize', () => { updateCalibrator(); if ($('step3').classList.contains('active')) renderPreviewStage(); });
 
-  /* ─── Auto-detect wall corners (v3: adaptive tol + flood-fill from center + morpho closing) ─── */
+  /* ─── Auto-detect wall corners (v1: color-uniform region from center) ───
+     Honest scope: works on photos where the wall is the central, color-uniform region.
+     Fails gracefully (button shows "Echec") on chaotic photos — user adjusts corners manually.
+     Future: see FUTURE_IDEAS.md for ML-based segmentation plan. */
   async function autoDetectWallCorners() {
     if (!wallImg) return;
     const btn = $('autoDetectBtn');
@@ -1150,7 +1153,6 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       c.getContext('2d').drawImage(wallImg, 0, 0, w, h);
       const d = c.getContext('2d').getImageData(0, 0, w, h).data;
 
-      /* Sample average wall color near the geometric center */
       const cx = Math.floor(w/2), cy = Math.floor(h/2);
       const R = Math.floor(Math.min(w, h) * 0.08);
       let sumR = 0, sumG = 0, sumB = 0, count = 0;
@@ -1163,35 +1165,22 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       }
       const avgR = sumR/count, avgG = sumG/count, avgB = sumB/count;
 
-      /* Try a sequence of tolerances; pick the result whose region fills 15-55% of the image */
-      const tolCandidates = [35, 50, 65, 80, 100];
-      let best = null;
-      for (const TOL of tolCandidates) {
-        const TOL2 = TOL * TOL;
-        let mask = new Uint8Array(w * h);
-        for (let i = 0; i < w * h; i++) {
-          const j = i * 4;
-          const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
-          mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
-        }
-        mask = dilate(mask, w, h, 2);
-        mask = erode(mask, w, h, 2);
-        const reg = regionFromCenter(mask, w, h, cx, cy);
-        if (!reg) continue;
-        const frac = reg.size / (w * h);
-        const score = (frac >= 0.15 && frac <= 0.55) ? 1 - Math.abs(frac - 0.35) : (frac < 0.15 ? frac * 2 : 0);
-        if (!best || score > best.score) best = { reg, frac, TOL, score };
-        /* Early exit if we already have a good region in the sweet spot */
-        if (frac >= 0.18 && frac <= 0.50) break;
+      const TOL = 65, TOL2 = TOL * TOL;
+      const mask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const j = i * 4;
+        const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
+        mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
       }
-      if (!best || !best.reg) throw new Error('no-region');
 
-      const r = best.reg;
+      const reg = regionFromCenter(mask, w, h, cx, cy);
+      if (!reg || reg.size < (w * h * 0.05)) throw new Error('no-region');
+
       wallCorners = [
-        { x: r.minX/w, y: r.minY/h },
-        { x: r.maxX/w, y: r.minY/h },
-        { x: r.maxX/w, y: r.maxY/h },
-        { x: r.minX/w, y: r.maxY/h }
+        { x: reg.minX/w, y: reg.minY/h },
+        { x: reg.maxX/w, y: reg.minY/h },
+        { x: reg.maxX/w, y: reg.maxY/h },
+        { x: reg.minX/w, y: reg.maxY/h }
       ];
       updateCalibrator();
       btn.querySelector('span').textContent = 'Detecte !';

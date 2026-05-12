@@ -70,3 +70,39 @@ Pistes notées au fur et à mesure. Pas encore implémentées ou retirées en at
 - **Tint matching** : adoucir le design avec un wash de la couleur dominante du mur (warm/cool unification). Effet subtle mais ancre le design dans l'ambiance de la pièce.
 - **Edge integration** : flouter légèrement les bords du design pour qu'ils se fondent moins agressivement dans le mur.
 - **Texture map** : appliquer une texture noisy du mur sur le design (mur en brique = design "imprimé sur brique"). Demande de la perspective + matching de texture.
+
+---
+
+## Auto-detect wall corners — v5 ML plan (différé)
+
+**État actuel (2026-05-12)** : v1 (color-uniform region from center, TOL=65) shippé. Marche sur photos simples (mur uni cadré au centre). Echoue gracefully sur photos chaotiques (warehouse, mur peu distinct des voisins) — l'utilisateur ajuste les coins manuellement.
+
+**Approches heuristiques testées et abandonnées** :
+- **v2** : 5-point color sampling + morpho closing + plus grande région. Problème : englobe plafond+sol+mur quand leurs tons sont proches.
+- **v3** : tolérance adaptative (35→100, sweet spot 15-55% area). Problème : même chose, photos chaotiques sortent toujours du sweet spot.
+
+**Conclusion** : les heuristiques pures (couleur, edges, etc.) ne passent pas un seuil de fiabilité acceptable sur des photos réelles type warehouse / chantier où le mur n'est pas clairement distinct.
+
+**v5 — Approche ML pragmatique**
+
+Charger un modèle de segmentation léger via CDN au moment où l'utilisateur clique sur "Détecter auto".
+
+Candidats techniques :
+1. **MediaPipe Image Segmentation** (Google) — ~10 MB, classes ADE20K (mur, plafond, sol, etc.). Tourne via WASM en browser. CDN : `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision`.
+2. **ONNXRuntime + ADE20K segmentation** — modèle ONNX léger (15-30 MB) chargé via `onnxruntime-web`. Plus flexible mais setup plus complexe.
+3. **Segment Anything (SAM)** distillé (MobileSAM ~10 MB) — segmentation par point. L'utilisateur clique sur le mur, on récupère le masque, on extrait le bounding box.
+
+Plan d'implémentation :
+1. Lazy-load le modèle au premier clic sur "Détecter auto"
+2. Show loading state ("Chargement du modele IA... 30%")
+3. Sur l'image downsamplée à 512px :
+   - Run inference → masque pixel-wise par classe
+   - Filter par classe "wall" (label dans ADE20K)
+   - Trouver la plus grande composante connexe centrale
+   - Calculer son bounding box (ou 4 corners en perspective si on veut sophistiquer)
+4. Update wallCorners + updateCalibrator()
+5. Garder en cache le modèle pour les utilisations suivantes (same-session)
+
+Effort estimé : 2-3 jours (intégration MediaPipe, tests, polish UX du loading).
+
+Trigger pour relancer ce travail : feedback réel des clients (5+ utilisateurs) qui se plaignent du calibrateur manuel sur photos chaotiques.
