@@ -1118,17 +1118,29 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   updateLivePreview();
   function onDesignUploaded(img, file) {
     if (designs.length >= MAX_DESIGNS) return;
-    designs.push({ img, file, noBgImg: null, bgScaleX: 1, bgScaleY: 1 });
+    /* Each design has its own desired size (cm); null until first recommendation auto-fills */
+    designs.push({ img, file, noBgImg: null, bgScaleX: 1, bgScaleY: 1, sizeCm: null });
     activeDesignIdx = designs.length - 1;
     syncActiveDesign();
     renderDesignThumbs();
+    /* Force-clear inputs so updateStep2Limits will auto-fill with this design's recommendation */
+    $('designW').value = '';
+    $('designH').value = '';
     updateStep2Limits();
+    persistInputsToActiveDesign(); /* save the just-filled reco back to this design's slot */
     refreshStep3Gate();
     updateDesignUploadVisibility();
   }
+
+  function persistInputsToActiveDesign() {
+    const d = designs[activeDesignIdx];
+    if (!d) return;
+    const w = parseFloat($('designW').value), h = parseFloat($('designH').value);
+    if (w > 0 && h > 0) d.sizeCm = { w: w * 100, h: h * 100 };
+  }
   setupUpload('designUpload', onDesignUploaded);
 
-  /* Pick another design via an isolated input, avoiding accumulated click listeners on the original zone */
+  /* Pick another design via an isolated input + async image decode (avoids main-thread block on large photos) */
   function pickAnotherDesign() {
     if (designs.length >= MAX_DESIGNS) return;
     const inp = document.createElement('input');
@@ -1136,15 +1148,43 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     inp.accept = 'image/*';
     inp.style.display = 'none';
     document.body.appendChild(inp);
-    inp.addEventListener('change', () => {
+    inp.addEventListener('change', async () => {
       if (!inp.files.length) { inp.remove(); return; }
       const file = inp.files[0];
+      showDesignLoadingThumb();
       const img = new Image();
-      img.onload = () => { onDesignUploaded(img, file); inp.remove(); };
-      img.onerror = () => inp.remove();
       img.src = URL.createObjectURL(file);
+      try {
+        if (typeof img.decode === 'function') await img.decode();
+        else await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+      } catch (e) {
+        console.error('Image decode failed:', e);
+        hideDesignLoadingThumb();
+        inp.remove();
+        return;
+      }
+      onDesignUploaded(img, file);
+      hideDesignLoadingThumb();
+      inp.remove();
     });
     inp.click();
+  }
+
+  function showDesignLoadingThumb() {
+    const thumbs = $('designThumbs');
+    if (!thumbs) return;
+    /* Replace the "+" button with a loading spinner while we decode */
+    const add = thumbs.querySelector('.design-thumb-add');
+    if (add) {
+      add.classList.add('disabled');
+      add.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>';
+    }
+  }
+  function hideDesignLoadingThumb() {
+    /* renderDesignThumbs will rebuild — this is just a safety reset */
+    const thumbs = $('designThumbs');
+    const add = thumbs?.querySelector('.design-thumb-add');
+    if (add) { add.classList.remove('disabled'); add.textContent = '+'; }
   }
 
   function syncActiveDesign() {
@@ -1166,11 +1206,29 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   function setActiveDesign(idx) {
     if (idx < 0 || idx >= designs.length) return;
+    /* Save current inputs to the design we're leaving (so manual edits stick) */
+    persistInputsToActiveDesign();
     activeDesignIdx = idx;
     syncActiveDesign();
     renderDesignThumbs();
-    /* If we're in step 3, swap the preview image */
+    /* Restore the new design's size into the inputs, or compute fresh recommendation */
+    const d = designs[idx];
+    if (d.sizeCm) {
+      $('designW').value = (d.sizeCm.w / 100).toFixed(2);
+      $('designH').value = (d.sizeCm.h / 100).toFixed(2);
+      updateStep2Limits(); /* refresh recos block without overwriting inputs */
+    } else {
+      /* Clear and let updateStep2Limits auto-fill from the new design's natural ratio */
+      $('designW').value = '';
+      $('designH').value = '';
+      updateStep2Limits();
+      persistInputsToActiveDesign();
+    }
+    refreshStep3Gate();
+    /* In step 3, swap the preview image and re-render with this design's size */
     if ($('step3').classList.contains('active') && designImg) {
+      designWcm = parseFloat($('designW').value) * 100;
+      designHcm = parseFloat($('designH').value) * 100;
       const designEl = $('previewDesign');
       designEl.src = bgOn && designImgNoBg ? designImgNoBg.src : designImg.src;
       designEl.onload = () => renderPreviewStage();
@@ -1256,7 +1314,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     $('toStep3').disabled = !(designs.length > 0 && dw > 0 && dh > 0);
   }
   ['designW', 'designH'].forEach(id => {
-    $(id).addEventListener('input', refreshStep3Gate);
+    $(id).addEventListener('input', () => {
+      refreshStep3Gate();
+      persistInputsToActiveDesign();
+    });
   });
 
   /* ─── Step 2 limits & recommendations ─── */
@@ -1316,10 +1377,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   $('useReco').addEventListener('click', () => {
     $('designW').value = $('useReco').dataset.w;
     $('designH').value = $('useReco').dataset.h;
+    persistInputsToActiveDesign();
+    refreshStep3Gate();
   });
   $('useRecoMax').addEventListener('click', () => {
     $('designW').value = $('useRecoMax').dataset.w;
     $('designH').value = $('useRecoMax').dataset.h;
+    persistInputsToActiveDesign();
+    refreshStep3Gate();
   });
 
   /* Constrain manual input to max */
