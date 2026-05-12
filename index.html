@@ -303,6 +303,17 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   will-change: transform;
 }
 .preview-stage img.design-img.dragging { cursor: grabbing; }
+.preview-stage img.lighting-overlay {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: auto;
+  filter: blur(28px) grayscale(0.6) contrast(1.15);
+  mix-blend-mode: soft-light;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  will-change: clip-path;
+}
+.preview-stage.lighting-on img.lighting-overlay { opacity: 0.7; }
 .preview-stage svg.zone-overlay {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none;
@@ -767,6 +778,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
         <g class="ruler" id="rulerGroup"></g>
       </svg>
       <img id="previewDesign" class="design-img" alt="">
+      <img id="previewLighting" class="lighting-overlay" alt="">
     </div>
     <div class="canvas-loader" id="canvasLoader">
       <div class="spinner"></div>
@@ -828,6 +840,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
         <button class="btn btn-outline" id="toggleBg" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
           <span>Retirer fond</span>
+        </button>
+        <button class="btn btn-outline" id="toggleLighting" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+          <span>Lumiere mur</span>
         </button>
       </div>
       <button class="btn btn-mint btn-block btn-lg" id="downloadBtn" style="margin-top:14px;">
@@ -1536,8 +1552,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   function initPreview() {
     const wallEl = $('previewWall');
     const designEl = $('previewDesign');
+    const lightEl = $('previewLighting');
     wallEl.src = wallImg.src;
     designEl.src = designImg.src;
+    if (lightEl) lightEl.src = wallImg.src;
     designU = 0.5; designV = 0.5;
     renderPrintable();
     /* Poll until layout is ready (stage has dimensions) */
@@ -1626,6 +1644,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     ];
     const poly = Z.map(p => `${(p.x/sw)*100},${(p.y/sh)*100}`).join(' ');
     $('printablePoly').setAttribute('points', poly);
+
+    /* Lighting overlay: clip the wall-copy to the design quad so it only modulates that area */
+    const lightEl = $('previewLighting');
+    if (lightEl) {
+      const clipPoly = D.map(p => `${p.x}px ${p.y}px`).join(', ');
+      lightEl.style.clipPath = `polygon(${clipPoly})`;
+      lightEl.style.webkitClipPath = `polygon(${clipPoly})`;
+    }
 
     /* Scale ruler at the bottom of the wall: 1m segments with 10cm ticks */
     const rulerG = $('rulerGroup');
@@ -1741,13 +1767,22 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     setTimeout(() => tip.classList.add('hidden'), 5000);
   }
 
-  /* ─── Toggles: compare + background removal ─── */
+  /* ─── Toggles: compare + background removal + lighting transfer ─── */
   let compareOn = false;
   $('toggleCompare').addEventListener('click', () => {
     compareOn = !compareOn;
     $('previewDesign').style.opacity = compareOn ? '0' : '1';
+    /* Also hide the lighting overlay in compare mode */
+    $('previewLighting').style.display = compareOn ? 'none' : '';
     $('toggleCompare').querySelector('span').textContent = compareOn ? 'Voir design' : 'Mur seul';
     $('toggleCompare').classList.toggle('active', compareOn);
+  });
+
+  let lightingOn = false;
+  $('toggleLighting').addEventListener('click', () => {
+    lightingOn = !lightingOn;
+    $('previewStage').classList.toggle('lighting-on', lightingOn);
+    $('toggleLighting').classList.toggle('active', lightingOn);
   });
 
   /* Background removal — uses @imgly/background-removal (ML model, lazy-loaded from CDN) */
@@ -1921,6 +1956,29 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     drawTexturedTriangle(ec, srcImg, [S[0],S[1],S[2]], [D[0],D[1],D[2]]);
     drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
     ec.globalCompositeOperation = 'source-over';
+
+    /* Lighting transfer: warp a blurred-grayscale wall onto the design quad with soft-light */
+    if (lightingOn) {
+      /* Build a blurred/grayscaled version of the wall on an offscreen canvas */
+      const lit = document.createElement('canvas');
+      lit.width = natW; lit.height = natH;
+      const lc = lit.getContext('2d');
+      lc.filter = 'blur(28px) grayscale(0.6) contrast(1.15)';
+      lc.drawImage(wallImg, 0, 0, natW, natH);
+      ec.save();
+      /* Clip to the design quad */
+      ec.beginPath();
+      ec.moveTo(D[0].x, D[0].y);
+      ec.lineTo(D[1].x, D[1].y);
+      ec.lineTo(D[2].x, D[2].y);
+      ec.lineTo(D[3].x, D[3].y);
+      ec.closePath();
+      ec.clip();
+      ec.globalCompositeOperation = 'soft-light';
+      ec.globalAlpha = 0.7;
+      ec.drawImage(lit, 0, 0);
+      ec.restore();
+    }
 
     /* Watermark */
     ec.save();
