@@ -303,15 +303,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   will-change: transform;
 }
 .preview-stage img.design-img.dragging { cursor: grabbing; }
-.preview-stage img.lighting-overlay {
+.preview-stage .lighting-overlay {
   position: absolute; top: 0; left: 0;
   transform-origin: 0 0;
-  filter: blur(50px) grayscale(1) contrast(1.6) brightness(1.4);
   mix-blend-mode: multiply;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
   will-change: transform;
+  background: linear-gradient(180deg, #ffffff 0%, #777 100%);
 }
 
 /* Lighting intensity slider */
@@ -327,6 +326,16 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .lighting-slider-wrap label { font-size: 0.74rem; font-weight: 500; color: var(--midnight); }
 .lighting-slider-wrap .val { font-size: 0.74rem; font-weight: 600; color: var(--mint); }
 .lighting-slider-wrap input[type=range] { width: 100%; accent-color: var(--mint); }
+.dir-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+.dir-btn {
+  padding: 8px 0; border: 1.5px solid var(--geyser);
+  background: #fff; border-radius: 8px;
+  font-size: 1.1rem; cursor: pointer;
+  color: var(--midnight); font-family: inherit;
+  transition: all var(--ease);
+}
+.dir-btn:hover { border-color: var(--mint); }
+.dir-btn.active { background: var(--midnight); color: var(--mint); border-color: var(--midnight); }
 .preview-stage svg.zone-overlay {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none;
@@ -804,7 +813,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
         <g class="ruler" id="rulerGroup"></g>
       </svg>
       <img id="previewDesign" class="design-img" alt="">
-      <img id="previewLighting" class="lighting-overlay" alt="">
+      <div id="previewLighting" class="lighting-overlay"></div>
     </div>
     <div class="canvas-loader" id="canvasLoader">
       <div class="spinner"></div>
@@ -874,6 +883,15 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       </div>
       <div class="lighting-slider-wrap" id="lightingSliderWrap">
         <div class="row">
+          <label>Direction de la lumiere</label>
+        </div>
+        <div class="dir-row" id="dirRow">
+          <button class="dir-btn active" data-dir="top" title="Lumiere du haut">&uarr;</button>
+          <button class="dir-btn" data-dir="bottom" title="Lumiere du bas">&darr;</button>
+          <button class="dir-btn" data-dir="left" title="Lumiere de gauche">&larr;</button>
+          <button class="dir-btn" data-dir="right" title="Lumiere de droite">&rarr;</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
           <label for="lightingSlider">Intensite</label>
           <span class="val" id="lightingVal">70%</span>
         </div>
@@ -1585,10 +1603,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   function initPreview() {
     const wallEl = $('previewWall');
     const designEl = $('previewDesign');
-    const lightEl = $('previewLighting');
     wallEl.src = wallImg.src;
     designEl.src = designImg.src;
-    if (lightEl) lightEl.src = wallImg.src;
     designU = 0.5; designV = 0.5;
     renderPrintable();
     /* Poll until layout is ready (stage has dimensions) */
@@ -1678,20 +1694,18 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const poly = Z.map(p => `${(p.x/sw)*100},${(p.y/sh)*100}`).join(' ');
     $('printablePoly').setAttribute('points', poly);
 
-    /* Lighting overlay: project the ENTIRE wall image into the design quad via perspective.
-       This way the design inherits the wall's full lighting pattern (not just the patch directly behind it). */
+    /* Lighting overlay: a directional gradient projected into the design quad via perspective.
+       The gradient itself is set via .style.background. We just project a 100x100 logical box. */
     const lightEl = $('previewLighting');
-    if (lightEl && wallImg && wallImg.naturalWidth) {
-      const wW = wallImg.naturalWidth, wH = wallImg.naturalHeight;
-      lightEl.style.width = wW + 'px';
-      lightEl.style.height = wH + 'px';
+    if (lightEl) {
+      const sz = 100;
+      lightEl.style.width = sz + 'px';
+      lightEl.style.height = sz + 'px';
       const Hl = homography(
-        [{x:0,y:0},{x:wW,y:0},{x:wW,y:wH},{x:0,y:wH}],
+        [{x:0,y:0},{x:sz,y:0},{x:sz,y:sz},{x:0,y:sz}],
         D
       );
       if (Hl) lightEl.style.transform = homographyToMatrix3d(Hl);
-      lightEl.style.clipPath = '';
-      lightEl.style.webkitClipPath = '';
     }
 
     /* Scale ruler at the bottom of the wall: 1m segments with 10cm ticks */
@@ -1821,21 +1835,42 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   let lightingOn = false;
   let lightingIntensity = 0.7;
-  function applyLightingOpacity() {
+  let lightingDir = 'top'; /* light source position; design darkens on the opposite side */
+
+  /* CSS gradient angle: side where the LIGHT comes from = WHITE end. Opposite side darkens. */
+  function gradientForDirection(dir) {
+    /* CSS linear-gradient angle: 0deg = to top. We want light=white at the source side. */
+    const map = {
+      top:    'linear-gradient(to bottom, #ffffff 0%, #666 100%)',   /* light up, dark down */
+      bottom: 'linear-gradient(to top,    #ffffff 0%, #666 100%)',
+      left:   'linear-gradient(to right,  #ffffff 0%, #666 100%)',
+      right:  'linear-gradient(to left,   #ffffff 0%, #666 100%)'
+    };
+    return map[dir] || map.top;
+  }
+  function applyLightingStyle() {
     const el = $('previewLighting');
     if (!el) return;
     el.style.opacity = lightingOn ? String(lightingIntensity) : '0';
+    el.style.background = gradientForDirection(lightingDir);
   }
   $('toggleLighting').addEventListener('click', () => {
     lightingOn = !lightingOn;
     $('toggleLighting').classList.toggle('active', lightingOn);
     $('actionsCard').classList.toggle('has-lighting', lightingOn);
-    applyLightingOpacity();
+    applyLightingStyle();
   });
   $('lightingSlider').addEventListener('input', (e) => {
     lightingIntensity = parseFloat(e.target.value) / 100;
     $('lightingVal').textContent = e.target.value + '%';
-    applyLightingOpacity();
+    applyLightingStyle();
+  });
+  document.querySelectorAll('.dir-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      lightingDir = btn.dataset.dir;
+      document.querySelectorAll('.dir-btn').forEach(b => b.classList.toggle('active', b === btn));
+      applyLightingStyle();
+    });
   });
 
   /* Background removal — uses @imgly/background-removal (ML model, lazy-loaded from CDN) */
@@ -2010,20 +2045,27 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
     ec.globalCompositeOperation = 'source-over';
 
-    /* Lighting transfer: project the ENTIRE blurred wall into the design quad via 2-triangle warp. */
+    /* Lighting transfer: a directional gradient (#fff -> #666) projected into the design quad */
     if (lightingOn) {
       const lit = document.createElement('canvas');
-      lit.width = natW; lit.height = natH;
+      const sz = 256;
+      lit.width = sz; lit.height = sz;
       const lc = lit.getContext('2d');
-      const blurPx = Math.round(50 * (natW / 800));
-      lc.filter = `blur(${blurPx}px) grayscale(1) contrast(1.6) brightness(1.4)`;
-      lc.drawImage(wallImg, 0, 0, natW, natH);
-      const Sw = [{x:0,y:0},{x:natW,y:0},{x:natW,y:natH},{x:0,y:natH}];
+      const dirAxes = {
+        top:    [0, 0, 0, sz],
+        bottom: [0, sz, 0, 0],
+        left:   [0, 0, sz, 0],
+        right:  [sz, 0, 0, 0]
+      }[lightingDir] || [0, 0, 0, sz];
+      const g = lc.createLinearGradient(dirAxes[0], dirAxes[1], dirAxes[2], dirAxes[3]);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#666666');
+      lc.fillStyle = g; lc.fillRect(0, 0, sz, sz);
+      const Sl = [{x:0,y:0},{x:sz,y:0},{x:sz,y:sz},{x:0,y:sz}];
       ec.save();
       ec.globalCompositeOperation = 'multiply';
       ec.globalAlpha = lightingIntensity;
-      drawTexturedTriangle(ec, lit, [Sw[0],Sw[1],Sw[2]], [D[0],D[1],D[2]]);
-      drawTexturedTriangle(ec, lit, [Sw[0],Sw[2],Sw[3]], [D[0],D[2],D[3]]);
+      drawTexturedTriangle(ec, lit, [Sl[0],Sl[1],Sl[2]], [D[0],D[1],D[2]]);
+      drawTexturedTriangle(ec, lit, [Sl[0],Sl[2],Sl[3]], [D[0],D[2],D[3]]);
       ec.restore();
     }
 
