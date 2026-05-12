@@ -306,14 +306,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .preview-stage img.lighting-overlay {
   position: absolute; top: 0; left: 0;
   width: 100%; height: auto;
-  filter: blur(18px) grayscale(0.85) contrast(1.5) brightness(1.05);
+  filter: blur(45px) grayscale(0.5) contrast(1.35) brightness(1.02);
   mix-blend-mode: overlay;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
   will-change: clip-path;
 }
-.preview-stage.lighting-on img.lighting-overlay { opacity: 0.85; }
+.preview-stage.lighting-on img.lighting-overlay { opacity: 0.9; }
 .preview-stage svg.zone-overlay {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none;
@@ -1970,12 +1970,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
     ec.globalCompositeOperation = 'source-over';
 
-    /* Lighting transfer: warp a blurred-grayscale wall onto the design quad with overlay blend */
+    /* Lighting transfer: warp a blurred wall onto the design quad with overlay blend.
+       Blur radius is scaled to the export image size to keep the same visual character at high-res. */
     if (lightingOn) {
       const lit = document.createElement('canvas');
       lit.width = natW; lit.height = natH;
       const lc = lit.getContext('2d');
-      lc.filter = 'blur(18px) grayscale(0.85) contrast(1.5) brightness(1.05)';
+      const blurPx = Math.round(45 * (natW / 800));
+      lc.filter = `blur(${blurPx}px) grayscale(0.5) contrast(1.35) brightness(1.02)`;
       lc.drawImage(wallImg, 0, 0, natW, natH);
       ec.save();
       ec.beginPath();
@@ -1986,7 +1988,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       ec.closePath();
       ec.clip();
       ec.globalCompositeOperation = 'overlay';
-      ec.globalAlpha = 0.85;
+      ec.globalAlpha = 0.9;
       ec.drawImage(lit, 0, 0);
       ec.restore();
     }
