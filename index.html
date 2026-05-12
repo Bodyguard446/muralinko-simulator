@@ -306,14 +306,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .preview-stage img.lighting-overlay {
   position: absolute; top: 0; left: 0;
   width: 100%; height: auto;
-  filter: blur(28px) grayscale(0.6) contrast(1.15);
-  mix-blend-mode: soft-light;
+  filter: blur(18px) grayscale(0.85) contrast(1.5) brightness(1.05);
+  mix-blend-mode: overlay;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
   will-change: clip-path;
 }
-.preview-stage.lighting-on img.lighting-overlay { opacity: 0.7; }
+.preview-stage.lighting-on img.lighting-overlay { opacity: 0.85; }
 .preview-stage svg.zone-overlay {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none;
@@ -343,14 +343,27 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .magnifier::after  { top: 50%; left: 0; height: 1px; width: 100%; }
 
 /* Toggle button row */
-.toggle-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.toggle-row .btn { flex: 1; font-size: 0.8rem; padding: 10px 8px; gap: 6px; min-width: 0; }
-.toggle-row .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.toggle-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px;
+}
+.toggle-row .btn {
+  flex-direction: column;
+  font-size: 0.72rem; font-weight: 500;
+  padding: 12px 6px;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.15;
+  text-align: center;
+  border-radius: 10px;
+}
+.toggle-row .btn svg { width: 22px; height: 22px; flex-shrink: 0; opacity: 0.75; }
+.toggle-row .btn span { white-space: normal; }
+.toggle-row .btn:hover svg { opacity: 1; }
 .toggle-row .btn.active {
   background: var(--midnight); color: #fff; border-color: var(--midnight);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
 }
-.toggle-row .btn.active svg { color: var(--mint); }
+.toggle-row .btn.active svg { color: var(--mint); opacity: 1; }
 
 /* ─── Buttons ─── */
 .btn {
@@ -1957,16 +1970,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     drawTexturedTriangle(ec, srcImg, [S[0],S[2],S[3]], [D[0],D[2],D[3]]);
     ec.globalCompositeOperation = 'source-over';
 
-    /* Lighting transfer: warp a blurred-grayscale wall onto the design quad with soft-light */
+    /* Lighting transfer: warp a blurred-grayscale wall onto the design quad with overlay blend */
     if (lightingOn) {
-      /* Build a blurred/grayscaled version of the wall on an offscreen canvas */
       const lit = document.createElement('canvas');
       lit.width = natW; lit.height = natH;
       const lc = lit.getContext('2d');
-      lc.filter = 'blur(28px) grayscale(0.6) contrast(1.15)';
+      lc.filter = 'blur(18px) grayscale(0.85) contrast(1.5) brightness(1.05)';
       lc.drawImage(wallImg, 0, 0, natW, natH);
       ec.save();
-      /* Clip to the design quad */
       ec.beginPath();
       ec.moveTo(D[0].x, D[0].y);
       ec.lineTo(D[1].x, D[1].y);
@@ -1974,8 +1985,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       ec.lineTo(D[3].x, D[3].y);
       ec.closePath();
       ec.clip();
-      ec.globalCompositeOperation = 'soft-light';
-      ec.globalAlpha = 0.7;
+      ec.globalCompositeOperation = 'overlay';
+      ec.globalAlpha = 0.85;
       ec.drawImage(lit, 0, 0);
       ec.restore();
     }
