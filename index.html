@@ -332,14 +332,27 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 .magnifier::after  { top: 50%; left: 0; height: 1px; width: 100%; }
 
 /* Toggle button row */
-.toggle-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.toggle-row .btn { flex: 1; font-size: 0.8rem; padding: 10px 8px; gap: 6px; min-width: 0; }
-.toggle-row .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.toggle-row {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 4px;
+}
+.toggle-row .btn {
+  flex-direction: column;
+  font-size: 0.72rem; font-weight: 500;
+  padding: 12px 6px;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.15;
+  text-align: center;
+  border-radius: 10px;
+}
+.toggle-row .btn svg { width: 22px; height: 22px; flex-shrink: 0; opacity: 0.75; }
+.toggle-row .btn span { white-space: normal; }
+.toggle-row .btn:hover svg { opacity: 1; }
 .toggle-row .btn.active {
   background: var(--midnight); color: #fff; border-color: var(--midnight);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
 }
-.toggle-row .btn.active svg { color: var(--mint); }
+.toggle-row .btn.active svg { color: var(--mint); opacity: 1; }
 
 /* ─── Buttons ─── */
 .btn {
@@ -645,7 +658,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   </div>
 
   <div class="wall-calibrator" id="wallCalibrator" style="display:none;">
-    <p class="calib-help"><strong>Definissez les 4 coins du mur</strong> en deplacant les pastilles vertes. Cela permet un rendu perspective fidele a votre photo.</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+      <p class="calib-help" style="margin:0;flex:1;"><strong>Definissez les 4 coins du mur</strong> en deplacant les pastilles vertes.</p>
+      <button class="btn btn-outline" id="autoDetectBtn" type="button" style="font-size:0.78rem;padding:8px 14px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span>Detecter auto</span>
+      </button>
+    </div>
     <div class="calib-stage" id="calibStage">
       <img id="calibImg" alt="Mur">
       <svg class="calib-svg" id="calibSvg" preserveAspectRatio="none" viewBox="0 0 100 100"><polygon id="calibPoly" points=""/></svg>
@@ -818,7 +837,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     </div>
 
     <!-- Actions card -->
-    <div class="card">
+    <div class="card preview-stage-controls" id="actionsCard">
       <div class="card-title">Actions</div>
       <div class="toggle-row">
         <button class="btn btn-outline" id="toggleCompare" type="button">
@@ -1111,6 +1130,155 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   document.addEventListener('touchmove', calibMove, { passive: false });
   document.addEventListener('touchend', calibUp);
   window.addEventListener('resize', () => { updateCalibrator(); if ($('step3').classList.contains('active')) renderPreviewStage(); });
+
+  /* ─── Auto-detect wall corners (v1: color-uniform region from center) ───
+     Honest scope: works on photos where the wall is the central, color-uniform region.
+     Fails gracefully (button shows "Echec") on chaotic photos — user adjusts corners manually.
+     Future: see FUTURE_IDEAS.md for ML-based segmentation plan. */
+  async function autoDetectWallCorners() {
+    if (!wallImg) return;
+    const btn = $('autoDetectBtn');
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.querySelector('span').textContent = 'Detection...';
+    await new Promise(r => setTimeout(r, 50));
+
+    try {
+      const targetW = 256;
+      const scale = wallImg.naturalWidth / targetW;
+      const w = targetW;
+      const h = Math.round(wallImg.naturalHeight / scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(wallImg, 0, 0, w, h);
+      const d = c.getContext('2d').getImageData(0, 0, w, h).data;
+
+      const cx = Math.floor(w/2), cy = Math.floor(h/2);
+      const R = Math.floor(Math.min(w, h) * 0.08);
+      let sumR = 0, sumG = 0, sumB = 0, count = 0;
+      for (let y = cy - R; y < cy + R; y++) {
+        for (let x = cx - R; x < cx + R; x++) {
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const i = (y * w + x) * 4;
+          sumR += d[i]; sumG += d[i+1]; sumB += d[i+2]; count++;
+        }
+      }
+      const avgR = sumR/count, avgG = sumG/count, avgB = sumB/count;
+
+      const TOL = 65, TOL2 = TOL * TOL;
+      const mask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const j = i * 4;
+        const dr = d[j] - avgR, dg = d[j+1] - avgG, db = d[j+2] - avgB;
+        mask[i] = (dr*dr + dg*dg + db*db) < TOL2 ? 1 : 0;
+      }
+
+      const reg = regionFromCenter(mask, w, h, cx, cy);
+      if (!reg || reg.size < (w * h * 0.05)) throw new Error('no-region');
+
+      wallCorners = [
+        { x: reg.minX/w, y: reg.minY/h },
+        { x: reg.maxX/w, y: reg.minY/h },
+        { x: reg.maxX/w, y: reg.maxY/h },
+        { x: reg.minX/w, y: reg.maxY/h }
+      ];
+      updateCalibrator();
+      btn.querySelector('span').textContent = 'Detecte !';
+      setTimeout(() => { btn.querySelector('span').textContent = 'Detecter auto'; }, 1500);
+    } catch (e) {
+      console.warn('Auto-detect failed:', e.message);
+      btn.querySelector('span').textContent = 'Echec';
+      setTimeout(() => { btn.querySelector('span').textContent = 'Detecter auto'; }, 1500);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  }
+
+  function regionFromCenter(mask, w, h, cx, cy) {
+    const startIdx = cy * w + cx;
+    if (!mask[startIdx]) return null;
+    const visited = new Uint8Array(w * h);
+    const queue = [startIdx];
+    visited[startIdx] = 1;
+    let minX = w, minY = h, maxX = -1, maxY = -1, size = 0;
+    while (queue.length) {
+      const i = queue.pop();
+      const px = i % w, py = (i / w) | 0;
+      size++;
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+      if (px > 0 && !visited[i-1] && mask[i-1]) { visited[i-1] = 1; queue.push(i-1); }
+      if (px < w-1 && !visited[i+1] && mask[i+1]) { visited[i+1] = 1; queue.push(i+1); }
+      if (py > 0 && !visited[i-w] && mask[i-w]) { visited[i-w] = 1; queue.push(i-w); }
+      if (py < h-1 && !visited[i+w] && mask[i+w]) { visited[i+w] = 1; queue.push(i+w); }
+    }
+    return { minX, minY, maxX, maxY, size };
+  }
+
+  function dilate(mask, w, h, r) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let any = 0;
+        for (let dy = -r; dy <= r && !any; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= h) continue;
+          for (let dx = -r; dx <= r && !any; dx++) {
+            const xx = x + dx; if (xx < 0 || xx >= w) continue;
+            if (mask[yy*w + xx]) any = 1;
+          }
+        }
+        out[y*w + x] = any;
+      }
+    }
+    return out;
+  }
+  function erode(mask, w, h, r) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let all = 1;
+        for (let dy = -r; dy <= r && all; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= h) { all = 0; continue; }
+          for (let dx = -r; dx <= r && all; dx++) {
+            const xx = x + dx; if (xx < 0 || xx >= w) { all = 0; continue; }
+            if (!mask[yy*w + xx]) all = 0;
+          }
+        }
+        out[y*w + x] = all;
+      }
+    }
+    return out;
+  }
+  function largestRegion(mask, w, h) {
+    const visited = new Uint8Array(w * h);
+    let best = null;
+    for (let start = 0; start < w * h; start++) {
+      if (!mask[start] || visited[start]) continue;
+      const queue = [start]; visited[start] = 1;
+      let minX = w, minY = h, maxX = -1, maxY = -1, size = 0;
+      while (queue.length) {
+        const i = queue.pop();
+        const px = i % w, py = (i / w) | 0;
+        size++;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+        if (px > 0 && !visited[i-1] && mask[i-1]) { visited[i-1] = 1; queue.push(i-1); }
+        if (px < w-1 && !visited[i+1] && mask[i+1]) { visited[i+1] = 1; queue.push(i+1); }
+        if (py > 0 && !visited[i-w] && mask[i-w]) { visited[i-w] = 1; queue.push(i-w); }
+        if (py < h-1 && !visited[i+w] && mask[i+w]) { visited[i+w] = 1; queue.push(i+w); }
+      }
+      if (!best || size > best.size) best = { minX, minY, maxX, maxY, size };
+    }
+    return best;
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#autoDetectBtn')) autoDetectWallCorners();
+  });
 
   /* ─── Live printable preview on step 1 ─── */
   function updateLivePreview() {

@@ -4,3 +4,6 @@ Thumbs.db
 *.log
 node_modules/
 *.pdf
+test-*.jpg
+test-*.png
+SESSIONS.md
