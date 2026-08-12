@@ -888,6 +888,10 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   let designWcm = 100, designHcm = 100;
   let pxPerCm = 1;
 
+  /* Metres -> centimetres. On passe par les millimetres pour eviter le piege du binaire :
+     2.05 * 100 vaut 204.99999999999997, ce qui ecarterait a tort l'assemblage de 205 cm. */
+  const toCm = m => Math.round((m || 0) * 1000) / 10;
+
   /* ─── Modele machine ───
      Source de verite : frais impression_v2.xlsx, onglets Combinaisons + Technical.
      Un assemblage = corps (obligatoire) + barres intermediaires empilables, chacune au plus
@@ -1317,8 +1321,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Live printable preview on step 1 ─── */
   function updateLivePreview() {
-    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
-    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const wH = toCm(parseFloat($('wallHeight').value));
+    const wW = toCm(parseFloat($('wallWidth').value));
     const s = $('isSuspended').checked;
     const c = $('hasCeiling').checked;
     const l = $('hasLeftWall').checked;
@@ -1392,7 +1396,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const d = designs[activeDesignIdx];
     if (!d) return;
     const w = parseFloat($('designW').value), h = parseFloat($('designH').value);
-    if (w > 0 && h > 0) d.sizeCm = { w: w * 100, h: h * 100 };
+    if (w > 0 && h > 0) d.sizeCm = { w: toCm(w), h: toCm(h) };
   }
   setupUpload('designUpload', onDesignUploaded);
 
@@ -1483,8 +1487,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     refreshStep3Gate();
     /* In step 3, swap the preview image and re-render with this design's size */
     if ($('step3').classList.contains('active') && designImg) {
-      designWcm = parseFloat($('designW').value) * 100;
-      designHcm = parseFloat($('designH').value) * 100;
+      designWcm = toCm(parseFloat($('designW').value));
+      designHcm = toCm(parseFloat($('designH').value));
       const designEl = $('previewDesign');
       designEl.src = bgOn && designImgNoBg ? designImgNoBg.src : designImg.src;
       designEl.onload = () => renderPreviewStage();
@@ -1586,8 +1590,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Step 2 limits & recommendations ─── */
   function updateStep2Limits() {
-    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
-    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const wH = toCm(parseFloat($('wallHeight').value));
+    const wW = toCm(parseFloat($('wallWidth').value));
     const c = $('hasCeiling').checked;
     const l = $('hasLeftWall').checked;
     const r = $('hasRightWall').checked;
@@ -1654,7 +1658,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   /* Step 3: apply min/max recommendation to the currently active design and re-render */
   function applyRecoOnStep3(useMax) {
     if (!designImg || !designImg.naturalWidth) return;
-    const wH = wallHeightM * 100, wW = wallWidthM * 100;
+    const wH = toCm(wallHeightM), wW = toCm(wallWidthM);
     const pa = computePrintable(wH, wW, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
     const ratio = designImg.naturalWidth / designImg.naturalHeight;
     let recH = pa.printableH, recW = recH * ratio, constrained = 'h';
@@ -1736,8 +1740,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   $('toStep3').addEventListener('click', () => {
     const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
     if (!(dw > 0) || !(dh > 0)) return;
-    designWcm = dw * 100;
-    designHcm = dh * 100;
+    designWcm = toCm(dw);
+    designHcm = toCm(dh);
     goTo(3);
   });
   $('backTo1').addEventListener('click', () => goTo(1));
@@ -1789,8 +1793,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     if (!H) return;
 
     /* Design size as fraction of wall (cm/cm). When bg removed, scale up so subject keeps its size */
-    const wallWcm = wallWidthM * 100;
-    const wallHcm = wallHeightM * 100;
+    const wallWcm = toCm(wallWidthM);
+    const wallHcm = toCm(wallHeightM);
     const sx = bgOn ? bgScaleX : 1;
     const sy = bgOn ? bgScaleY : 1;
     const fW = Math.min(1, (designWcm * sx) / wallWcm);
@@ -1871,7 +1875,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Printable area display ─── */
   function renderPrintable() {
-    const r = computePrintable(wallHeightM * 100, wallWidthM * 100, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
+    const r = computePrintable(toCm(wallHeightM), toCm(wallWidthM), hasCeiling, hasLeftWall, hasRightWall, isSuspended);
     const cm = v => (Math.round(v * 10) / 10) + ' cm';
     const maxBadge = r.isMax ? ' <span class="badge-max">max</span>' : '';
     $('paConfig').innerHTML = r.configName + maxBadge;
@@ -1885,7 +1889,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const warnings = [];
     if (r.suspended) warnings.push('Panneau suspendu : toute la surface est imprimable, aucune contrainte machine.');
     else if (r.tooShort) warnings.push('Impression impossible : il faut au moins ' + MIN_WALL_LABEL + ', la hauteur du plus petit assemblage.');
-    else if (wallHeightM * 100 > MAX_TOTAL_H) warnings.push('Mur plus haut que la machine — la zone imprimable est limitee a la hauteur machine.');
+    else if (toCm(wallHeightM) > MAX_TOTAL_H) warnings.push('Mur plus haut que la machine — la zone imprimable est limitee a la hauteur machine.');
     else if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
     if (warnings.length) { warn.style.display = 'block'; warn.innerHTML = warnings.join('<br>'); }
     else warn.style.display = 'none';
@@ -1938,7 +1942,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   function updateInfo() {
     $('infoDims').textContent = (designWcm/100).toFixed(2) + ' x ' + (designHcm/100).toFixed(2) + ' m';
     $('infoArea').textContent = ((designWcm * designHcm) / 10000).toFixed(2) + ' m2';
-    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
+    const wallWcm = toCm(wallWidthM), wallHcm = toCm(wallHeightM);
     const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
     const xCm = designU * wallWcm - designWcm/2;
     const yCm = designV * wallHcm - designHcm/2;
@@ -2115,7 +2119,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
       wallQuadNat
     );
-    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
+    const wallWcm = toCm(wallWidthM), wallHcm = toCm(wallHeightM);
     const sxd = bgOn ? bgScaleX : 1, syd = bgOn ? bgScaleY : 1;
     const fW = Math.min(1, (designWcm * sxd) / wallWcm), fH = Math.min(1, (designHcm * syd) / wallHcm);
     const u1 = designU - fW/2, u2 = designU + fW/2;
