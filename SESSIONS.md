@@ -15,7 +15,9 @@ Newest at top. Each entry: what was discussed, what shipped, what is next.
 
 **Livre :** `frais impression_v3.xlsx` (a cote du v2 dans OneDrive\Downloads) — copie du v2 avec les libelles **B6/B7 remis a l'endroit** (ils annoncaient Right/Left alors que B6 retire 10 = gauche et B7 retire 48/65 = droite ; formules inchangees) + une ligne 16 ajoutee a l'onglet Claude Log. Non versionne : ce classeur contient les frais d'impression. `Printable_Area_Calculator_v3.xlsx` **retire du depot** — bati sur le modele perime, donc dangereux a laisser trainer (recuperable dans l'historique git).
 
-**Ouvert, a trancher par Chokri :** (1) zone morte au sol **48** (formule du classeur, retenue) **vs 54** (schema de l'onglet Technical + ancien CSV) ; (2) marge droite **65 si mur >= 300** (formule, retenue) **vs 60** (schema Technical + ce que Chokri m'a dit le matin meme). Les deux sont des constantes nommees, une ligne a changer dans chaque outil.
+**Tranche par Chokri :** zone morte au sol = **48** (formule du classeur, deja en place) ; marge droite sur mur haut = **60** et non 65 (valeur du schema Technical). Applique des deux cotes — `SIDE_FAR_WIDE` dans le simulateur, formules B11 et B20 du classeur v3. Verifie sur la bascule a 300 cm : mur 299 x 500 → 9,58 m², mur 300 x 500 → 9,33 m², identique dans les deux outils. Le seuil de bascule reste la **hauteur du mur >= 300 cm** (regle de la formule) et non la hauteur d'assemblage — a corriger si l'intention etait le seuil machine.
+
+**Incident a noter :** l'AutoSave OneDrive a persiste mes valeurs de test dans `frais impression_v3.xlsx` pendant une verification (250x500 au lieu de 254x830). Detecte en relisant l'etat disque au lieu de le supposer, saisies d'origine restaurees. Sur un fichier OneDrive, toute ecriture COM est persistee meme sans `Save()` — travailler sur une copie scratchpad.
 
 ---
 

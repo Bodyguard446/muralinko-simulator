@@ -926,7 +926,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   const DEAD_CEILING = 35;   /* sous plafond : 35 cm perdus sous le sommet de la machine */
   const SIDE_NEAR    = 10;   /* mur adjacent a gauche */
   const SIDE_FAR     = 48;   /* mur adjacent a droite */
-  const SIDE_FAR_WIDE = 65;  /* idem, sur les murs hauts */
+  const SIDE_FAR_WIDE = 60;  /* idem, sur les murs hauts (confirme Chokri 12/08/2026 : 60, pas 65) */
   const WIDE_WALL_H   = 300; /* seuil de bascule vers SIDE_FAR_WIDE */
 
   /* Panneau suspendu (detache du mur) : aucune barre, aucune deduction, on imprime tout.
