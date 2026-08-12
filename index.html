@@ -887,39 +887,63 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   let designWcm = 100, designHcm = 100;
   let pxPerCm = 1;
 
-  /* ─── Machine configurations ─── */
+  /* ─── Modele machine ───
+     Assemblage reel : corps + [1 barre intermediaire] + barre 4. La barre 4 est toujours
+     montee et toujours en derniere position — elle porte la ceinture qui fait monter et
+     descendre la tete d'impression.
+     Hauteurs mesurees (machine_height_combinations.csv, 11/05/2025). Le tableau complet
+     des 15 combinaisons se recompose exactement a partir de ces 4 valeurs. */
+  const BODY_H = 145.0;
+  const BAR = { b1: 39.2, b2: 39.2, b3: 100.0, b4: 97.5 };  /* barre 2 = barre 1 (memes dimensions) */
+  /* Barre 4 toujours montee; les barres 1, 2 et 3 s'ajoutent librement entre le corps et elle.
+     Barres 1 et 2 etant identiques, "Corps + Barre 1 + Barre 4" couvre aussi la variante barre 2. */
   const CONFIGS = [
-    { name: "Corps + Barre 4",                         hC: 153.5, hN: 188.5 },
-    { name: "Corps + Barre 1 + Barre 4",               hC: 192.7, hN: 227.7 },
-    { name: "Corps + Barre 2 + Barre 4",               hC: 192.7, hN: 227.7 },
-    { name: "Corps + Barre 3 + Barre 4",               hC: 253.5, hN: 288.5 },
-    { name: "Corps + Barres 1+2 + Barre 4",            hC: 231.9, hN: 266.9 },
-    { name: "Corps + Barres 1+3 + Barre 4",            hC: 292.7, hN: 327.7 },
-    { name: "Corps + Barres 2+3 + Barre 4",            hC: 292.7, hN: 327.7 },
-    { name: "Corps + Barres 1+2+3 + Barre 4 (max)",    hC: 331.9, hN: 366.9 }
-  ];
-  const MAX_HC = Math.max(...CONFIGS.map(c => c.hC));
+    { name: "Corps + Barre 4",                          bars: [] },              /* 242,50 */
+    { name: "Corps + Barre 1 ou 2 + Barre 4",           bars: ['b1'] },          /* 281,70 */
+    { name: "Corps + Barres 1+2 + Barre 4",             bars: ['b1','b2'] },     /* 320,90 */
+    { name: "Corps + Barre 3 + Barre 4",                bars: ['b3'] },          /* 342,50 */
+    { name: "Corps + Barre 1 ou 2 + Barre 3 + Barre 4", bars: ['b1','b3'] },     /* 381,70 */
+    { name: "Corps + Barres 1+2+3 + Barre 4",           bars: ['b1','b2','b3'] } /* 420,90 */
+  ].map(c => ({ name: c.name, totalH: BODY_H + BAR.b4 + c.bars.reduce((s, b) => s + BAR[b], 0) }))
+   .sort((a, b) => a.totalH - b.totalH);
+  const MIN_TOTAL_H = CONFIGS[0].totalH;
+  const MAX_TOTAL_H = CONFIGS[CONFIGS.length - 1].totalH;
+  /* Plancher commercial affiche : arrondi au cm SUPERIEUR, sinon 2,42 m semblerait passer */
+  const MIN_WALL_LABEL = (Math.ceil(MIN_TOTAL_H) / 100).toFixed(2) + ' m';
 
+  /* Zones mortes, en cm */
+  const DEAD_BOTTOM  = 54;   /* socle : la tete ne descend jamais sous 54 cm du sol */
+  const DEAD_CEILING = 35;   /* sous plafond : 35 cm perdus sous le sommet de la machine */
+  const SIDE_NEAR    = 10;   /* mur adjacent a gauche */
+  const SIDE_FAR     = 48;   /* mur adjacent a droite */
+  const SIDE_FAR_WIDE = 60;  /* idem + stabilisateur, machine montee a 4 m et plus */
+  const WIDE_TOTAL_H  = 400; /* seuil "4 m" — aucun assemblage actuel ne l'atteint */
+
+  /* La zone imprimable est une bande verticale qui part de 54 cm du sol et monte jusqu'au
+     sommet utile de la machine.
+     Avec plafond : la machine doit tenir sous le plafond (hauteur totale <= hauteur du mur)
+     et perd 35 cm sous son sommet — on retient donc l'assemblage le plus haut qui rentre.
+     Sans plafond : la machine monte autant qu'il faut, la bande s'arrete en haut du mur. */
   function computePrintable(wallHcm, wallWcm, ceiling, leftW, rightW) {
-    const key = ceiling ? 'hC' : 'hN';
-    const valid = CONFIGS.filter(c => c[key] <= wallHcm);
-    let selected, tooShort = false;
-    if (valid.length > 0) {
-      selected = valid.reduce((a, b) => b[key] > a[key] ? b : a);
+    let selected, tooShort = false, printableH;
+    if (ceiling) {
+      const fit = CONFIGS.filter(c => c.totalH <= wallHcm);
+      tooShort = fit.length === 0;
+      selected = tooShort ? CONFIGS[0] : fit[fit.length - 1];
+      printableH = tooShort ? 0 : selected.totalH - DEAD_BOTTOM - DEAD_CEILING;
     } else {
-      selected = CONFIGS.reduce((a, b) => b[key] < a[key] ? b : a);
-      tooShort = true;
+      selected = CONFIGS.find(c => c.totalH >= wallHcm) || CONFIGS[CONFIGS.length - 1];
+      printableH = Math.max(0, Math.min(wallHcm, selected.totalH) - DEAD_BOTTOM);
     }
-    const isMax = selected.hC === MAX_HC;
-    const top = ceiling ? 35 : 0;
-    const bottom = 54;
-    const left = leftW ? 10 : 0;
-    const right = rightW ? (isMax ? 60 : 48) : 0;
-    const configH = selected[key];
-    const printableH = Math.max(0, configH - top - bottom);
+    const isMax = selected === CONFIGS[CONFIGS.length - 1];
+    const bottom = DEAD_BOTTOM;
+    const top = Math.max(0, wallHcm - bottom - printableH);   /* mesure depuis le haut du mur */
+    const left = leftW ? SIDE_NEAR : 0;
+    const right = rightW ? (selected.totalH >= WIDE_TOTAL_H ? SIDE_FAR_WIDE : SIDE_FAR) : 0;
     const printableW = Math.max(0, wallWcm - left - right);
     const area = Math.round((printableH * printableW) / 10000 * 100) / 100;
-    return { selected, isMax, tooShort, top, bottom, left, right, printableH, printableW, area, configH };
+    return { selected, isMax, tooShort, top, bottom, left, right,
+             printableH, printableW, area, totalH: selected.totalH };
   }
 
   /* Wall corners in fractional image coords (0..1). Order: TL, TR, BR, BL */
@@ -1299,9 +1323,9 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     $('liveArea').textContent = res.area.toFixed(2) + ' m²';
     $('liveConfig').innerHTML = res.selected.name + (res.isMax ? ' <span class="badge-max">max</span>' : '');
     const warns = [];
-    if (res.tooShort) warns.push('Mur trop bas pour la plus petite configuration.');
-    if (wH > Math.max(...CONFIGS.map(x => c ? x.hC : x.hN)) && c) warns.push('Mur plus haut que la machine — zone limitee a la hauteur machine.');
-    if (res.printableH <= 0 || res.printableW <= 0) warns.push('Aucune surface imprimable.');
+    if (res.tooShort) warns.push('Impression impossible : sous plafond il faut au moins ' + MIN_WALL_LABEL + ', la hauteur de la plus petite machine (corps + barre 4).');
+    else if (wH > MAX_TOTAL_H) warns.push('Mur plus haut que la machine — impression limitee a ' + (res.printableH/100).toFixed(2) + ' m de haut.');
+    else if (res.printableH <= 0 || res.printableW <= 0) warns.push('Aucune surface imprimable avec ces marges.');
     const w = $('liveWarn');
     if (warns.length) { w.style.display = 'block'; w.innerHTML = warns.join('<br>'); }
     else w.style.display = 'none';
@@ -1779,13 +1803,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     );
     if (Hd) designEl.style.transform = homographyToMatrix3d(Hd);
 
-    /* Printable zone polygon (in wall (u,v), then projected) */
-    const u_l = (hasLeftWall ? 10 : 0) / wallWcm;
-    const u_r = 1 - (hasRightWall ? (computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall).right) : 0) / wallWcm;
-    const v_t = (hasCeiling ? 35 : 0) / wallHcm;
-    /* For bottom: we use machine printable bottom relative to wall, but cap to 1 */
+    /* Printable zone polygon (in wall (u,v), then projected).
+       La bande part de 54 cm du sol et monte jusqu'au sommet utile de la machine —
+       qui est presque toujours plus bas que le plafond. */
     const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall);
-    const v_b = Math.min(1, (v_t * wallHcm + pa.printableH) / wallHcm);
+    const u_l = pa.left / wallWcm;
+    const u_r = 1 - pa.right / wallWcm;
+    const v_t = pa.top / wallHcm;
+    const v_b = (pa.top + pa.printableH) / wallHcm;
     const Z = [
       applyH(H, {x:u_l,y:v_t}),
       applyH(H, {x:u_r,y:v_t}),
@@ -1828,19 +1853,20 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   /* ─── Printable area display ─── */
   function renderPrintable() {
     const r = computePrintable(wallHeightM * 100, wallWidthM * 100, hasCeiling, hasLeftWall, hasRightWall);
-    const maxBadge = r.isMax ? '<span class="badge-max">max</span>' : '';
+    const cm = v => (Math.round(v * 10) / 10) + ' cm';
+    const maxBadge = r.isMax ? ' <span class="badge-max">max</span>' : '';
     $('paConfig').innerHTML = r.selected.name + maxBadge;
-    $('paTop').textContent = r.top + ' cm';
-    $('paBottom').textContent = r.bottom + ' cm';
-    $('paLeft').textContent = r.left + ' cm';
-    $('paRight').textContent = r.right + ' cm' + (r.isMax && hasRightWall ? ' (stabilisateur)' : '');
+    $('paTop').textContent = cm(r.top);
+    $('paBottom').textContent = cm(r.bottom);
+    $('paLeft').textContent = cm(r.left);
+    $('paRight').textContent = cm(r.right) + (r.right === SIDE_FAR_WIDE ? ' (stabilisateur)' : '');
     $('paDims').textContent = (r.printableW/100).toFixed(2) + ' x ' + (r.printableH/100).toFixed(2) + ' m';
     $('paArea').textContent = r.area.toFixed(2) + ' m²';
     const warn = $('paWarn');
     const warnings = [];
-    if (r.tooShort) warnings.push('Le mur est trop bas pour la plus petite configuration machine.');
-    if (wallHeightM * 100 > MAX_HC && hasCeiling) warnings.push('Mur plus haut que la machine max — la zone imprimable est limitee a la hauteur machine.');
-    if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
+    if (r.tooShort) warnings.push('Impression impossible : sous plafond il faut au moins ' + MIN_WALL_LABEL + ', la hauteur de la plus petite machine (corps + barre 4).');
+    else if (wallHeightM * 100 > MAX_TOTAL_H) warnings.push('Mur plus haut que la machine — la zone imprimable est limitee a la hauteur machine.');
+    else if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
     if (warnings.length) { warn.style.display = 'block'; warn.innerHTML = warnings.join('<br>'); }
     else warn.style.display = 'none';
   }
