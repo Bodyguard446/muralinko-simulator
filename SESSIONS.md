@@ -4,6 +4,9 @@ Newest at top. Each entry: what was discussed, what shipped, what is next.
 
 ---
 
+## 2026-08-12 — MERGE EN PROD
+`dev` → `main` merge et pousse (`e4de1db`, merge commit — pas de fast-forward possible, `main` portait 3 commits absents de `dev`). Cloudflare a redeploye. **Verifie en direct sur `simulateur.muralinko.workers.dev`** (avec cache-buster, la premiere requete servait encore l'ancienne version) : case « Panneau suspendu » presente, et 6 scenarios conformes a l'Excel — 250x834 → 12,57 m² (Corps + Barre 3 + Barre 11), 254x830 → 13,09 m² (Corps + Barre 7 + Barre 4), 220x400 → 5,28 m², 205x400 → 4,88 m² (le palier que le bug d'arrondi ratait), 300x500 → 9,33 m² (bascule marge droite 60), suspendu 125x300 → 3,75 m². Zero erreur console.
+
 ## 2026-08-12 — CORRECTION (fin de session)
 **Le modele decrit dans l'entree ci-dessous etait PERIME.** `machine_height_combinations.csv` date de mai 2025 ; le modele courant vit dans **`frais impression_v2.xlsx`** (OneDrive\Downloads, 6 onglets, refait en juin 2026), que je n'ai trouve qu'en cherchant une ligne « suspended » signalee par Chokri. Erreur de methode : j'ai pris le CSV pour source de verite sans verifier s'il existait plus recent, et j'ai lu « le dernier V2 » comme `Printable_Area_Calculator_Form_v2.xlsx` parce que le nom collait.
 
