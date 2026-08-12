@@ -697,6 +697,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     <label class="check"><input type="checkbox" id="hasCeiling" checked> Plafond au-dessus du mur</label>
     <label class="check"><input type="checkbox" id="hasLeftWall"> Mur perpendiculaire a gauche</label>
     <label class="check"><input type="checkbox" id="hasRightWall"> Mur perpendiculaire a droite</label>
+    <label class="check"><input type="checkbox" id="isSuspended"> Panneau suspendu (detache du mur)</label>
   </div>
 
   <div class="card" id="livePreview" style="margin-top:24px;display:none;">
@@ -883,43 +884,81 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   function get_designFile() { return designs[activeDesignIdx]?.file || null; }
   let designImg = null, designFile = null;  // sync'd via syncActiveDesign()
   let wallHeightM = 2.5, wallWidthM = 3.3;
-  let hasCeiling = true, hasLeftWall = false, hasRightWall = false;
+  let hasCeiling = true, hasLeftWall = false, hasRightWall = false, isSuspended = false;
   let designWcm = 100, designHcm = 100;
   let pxPerCm = 1;
 
-  /* ─── Machine configurations ─── */
-  const CONFIGS = [
-    { name: "Corps + Barre 4",                         hC: 153.5, hN: 188.5 },
-    { name: "Corps + Barre 1 + Barre 4",               hC: 192.7, hN: 227.7 },
-    { name: "Corps + Barre 2 + Barre 4",               hC: 192.7, hN: 227.7 },
-    { name: "Corps + Barre 3 + Barre 4",               hC: 253.5, hN: 288.5 },
-    { name: "Corps + Barres 1+2 + Barre 4",            hC: 231.9, hN: 266.9 },
-    { name: "Corps + Barres 1+3 + Barre 4",            hC: 292.7, hN: 327.7 },
-    { name: "Corps + Barres 2+3 + Barre 4",            hC: 292.7, hN: 327.7 },
-    { name: "Corps + Barres 1+2+3 + Barre 4 (max)",    hC: 331.9, hN: 366.9 }
-  ];
-  const MAX_HC = Math.max(...CONFIGS.map(c => c.hC));
+  /* Metres -> centimetres. On passe par les millimetres pour eviter le piege du binaire :
+     2.05 * 100 vaut 204.99999999999997, ce qui ecarterait a tort l'assemblage de 205 cm. */
+  const toCm = m => Math.round((m || 0) * 1000) / 10;
 
-  function computePrintable(wallHcm, wallWcm, ceiling, leftW, rightW) {
-    const key = ceiling ? 'hC' : 'hN';
-    const valid = CONFIGS.filter(c => c[key] <= wallHcm);
-    let selected, tooShort = false;
-    if (valid.length > 0) {
-      selected = valid.reduce((a, b) => b[key] > a[key] ? b : a);
-    } else {
-      selected = CONFIGS.reduce((a, b) => b[key] < a[key] ? b : a);
-      tooShort = true;
+  /* ─── Modele machine ───
+     Source de verite : frais impression_v2.xlsx, onglets Combinaisons + Technical.
+     Un assemblage = corps (obligatoire) + barres intermediaires empilables, chacune au plus
+     une fois + UNE barre terminale obligatoire. Hauteur totale limitee a 400 cm.
+     829 assemblages valides se ramenent a 45 hauteurs distinctes (135 a 395 cm) : pour chaque
+     hauteur on garde l'assemblage qui demande le moins de barres. */
+  const BODY_H = 125;
+  const INTER_BARS = { 'Barre 1': 40, 'Barre 2': 40, 'Barre 3': 100, 'Barre 5': 10,
+                       'Barre 6': 20, 'Barre 7': 30, 'Barre 8': 40, 'Barre 9': 50 };
+  const TERM_BARS  = { 'Barre 4': 97.5, 'Barre 10': 10, 'Barre 11': 20, 'Barre 12': 30 };
+  const MAX_ASSEMBLY_H = 400;
+
+  const CONFIGS = (() => {
+    const inter = Object.keys(INTER_BARS), byHeight = new Map();
+    for (const term of Object.keys(TERM_BARS)) {
+      for (let mask = 0; mask < (1 << inter.length); mask++) {
+        const bars = inter.filter((_, i) => mask & (1 << i));
+        const totalH = Math.round((BODY_H + TERM_BARS[term] +
+          bars.reduce((s, b) => s + INTER_BARS[b], 0)) * 10) / 10;
+        if (totalH > MAX_ASSEMBLY_H) continue;
+        const kept = byHeight.get(totalH);
+        if (!kept || bars.length < kept.bars.length) byHeight.set(totalH, { totalH, term, bars });
+      }
     }
-    const isMax = selected.hC === MAX_HC;
-    const top = ceiling ? 35 : 0;
-    const bottom = 54;
-    const left = leftW ? 10 : 0;
-    const right = rightW ? (isMax ? 60 : 48) : 0;
-    const configH = selected[key];
-    const printableH = Math.max(0, configH - top - bottom);
+    return [...byHeight.values()].sort((a, b) => a.totalH - b.totalH)
+      .map(c => ({ ...c, name: 'Corps' + c.bars.map(b => ' + ' + b).join('') + ' + ' + c.term }));
+  })();
+  const MIN_TOTAL_H = CONFIGS[0].totalH;
+  const MAX_TOTAL_H = CONFIGS[CONFIGS.length - 1].totalH;
+  /* Plancher commercial affiche : arrondi au cm SUPERIEUR pour ne pas laisser croire
+     qu'un mur pile en dessous passerait */
+  const MIN_WALL_LABEL = (Math.ceil(MIN_TOTAL_H) / 100).toFixed(2) + ' m';
+
+  /* Zones mortes, en cm */
+  const DEAD_BOTTOM  = 48;   /* socle : la tete ne descend jamais sous 48 cm du sol */
+  const DEAD_CEILING = 35;   /* sous plafond : 35 cm perdus sous le sommet de la machine */
+  const SIDE_NEAR    = 10;   /* mur adjacent a gauche */
+  const SIDE_FAR     = 48;   /* mur adjacent a droite */
+  const SIDE_FAR_WIDE = 60;  /* idem, sur les murs hauts (confirme Chokri 12/08/2026 : 60, pas 65) */
+  const WIDE_WALL_H   = 300; /* seuil de bascule vers SIDE_FAR_WIDE */
+
+  /* Panneau suspendu (detache du mur) : aucune barre, aucune deduction, on imprime tout.
+     Sinon : on retient le plus haut assemblage qui tient dans la hauteur du mur, puis la
+     bande imprimable part de 48 cm du sol et perd encore 35 cm sous le sommet de la machine
+     quand un plafond borne le mur. */
+  function computePrintable(wallHcm, wallWcm, ceiling, leftW, rightW, suspended) {
+    if (suspended) {
+      const h = Math.max(0, wallHcm), w = Math.max(0, wallWcm);
+      return { configName: 'Panneau suspendu — sans machine', suspended: true, isMax: false,
+               tooShort: false, top: 0, bottom: 0, left: 0, right: 0, printableH: h, printableW: w,
+               area: Math.round(h * w / 10000 * 100) / 100, totalH: 0 };
+    }
+    const fit = CONFIGS.filter(c => c.totalH <= wallHcm);
+    const tooShort = fit.length === 0;
+    const selected = tooShort ? null : fit[fit.length - 1];
+    const printableH = tooShort ? 0
+      : Math.max(0, selected.totalH - DEAD_BOTTOM - (ceiling ? DEAD_CEILING : 0));
+    const bottom = printableH > 0 ? DEAD_BOTTOM : 0;
+    const top = Math.max(0, wallHcm - bottom - printableH);   /* mesure depuis le haut du mur */
+    const left = leftW ? SIDE_NEAR : 0;
+    const right = rightW ? (wallHcm >= WIDE_WALL_H ? SIDE_FAR_WIDE : SIDE_FAR) : 0;
     const printableW = Math.max(0, wallWcm - left - right);
-    const area = Math.round((printableH * printableW) / 10000 * 100) / 100;
-    return { selected, isMax, tooShort, top, bottom, left, right, printableH, printableW, area, configH };
+    return { configName: tooShort ? '—' : selected.name, suspended: false,
+             isMax: !tooShort && selected === CONFIGS[CONFIGS.length - 1], tooShort,
+             top, bottom, left, right, printableH, printableW,
+             area: Math.round((printableH * printableW) / 10000 * 100) / 100,
+             totalH: tooShort ? 0 : selected.totalH };
   }
 
   /* Wall corners in fractional image coords (0..1). Order: TL, TR, BR, BL */
@@ -1282,31 +1321,38 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Live printable preview on step 1 ─── */
   function updateLivePreview() {
-    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
-    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const wH = toCm(parseFloat($('wallHeight').value));
+    const wW = toCm(parseFloat($('wallWidth').value));
+    const s = $('isSuspended').checked;
     const c = $('hasCeiling').checked;
     const l = $('hasLeftWall').checked;
     const r = $('hasRightWall').checked;
+    /* Un panneau suspendu n'a ni plafond ni mur adjacent : les 3 cases n'ont plus de sens */
+    ['hasCeiling', 'hasLeftWall', 'hasRightWall'].forEach(id => {
+      $(id).disabled = s;
+      $(id).closest('.check').style.opacity = s ? 0.45 : 1;
+    });
     /* Hide card until both dimensions are entered */
     if (wH <= 0 || wW <= 0) {
       $('livePreview').style.display = 'none';
       return;
     }
     $('livePreview').style.display = 'block';
-    const res = computePrintable(wH, wW, c, l, r);
+    const res = computePrintable(wH, wW, c, l, r, s);
     $('liveH').textContent = (res.printableH/100).toFixed(2) + ' m';
     $('liveW').textContent = (res.printableW/100).toFixed(2) + ' m';
     $('liveArea').textContent = res.area.toFixed(2) + ' m²';
-    $('liveConfig').innerHTML = res.selected.name + (res.isMax ? ' <span class="badge-max">max</span>' : '');
+    $('liveConfig').innerHTML = res.configName + (res.isMax ? ' <span class="badge-max">max</span>' : '');
     const warns = [];
-    if (res.tooShort) warns.push('Mur trop bas pour la plus petite configuration.');
-    if (wH > Math.max(...CONFIGS.map(x => c ? x.hC : x.hN)) && c) warns.push('Mur plus haut que la machine — zone limitee a la hauteur machine.');
-    if (res.printableH <= 0 || res.printableW <= 0) warns.push('Aucune surface imprimable.');
+    if (res.suspended) warns.push('Panneau suspendu : toute la surface est imprimable, aucune contrainte machine.');
+    else if (res.tooShort) warns.push('Impression impossible : il faut au moins ' + MIN_WALL_LABEL + ', la hauteur du plus petit assemblage.');
+    else if (wH > MAX_TOTAL_H) warns.push('Mur plus haut que la machine — impression limitee a ' + (res.printableH/100).toFixed(2) + ' m de haut.');
+    else if (res.printableH <= 0 || res.printableW <= 0) warns.push('Aucune surface imprimable avec ces marges.');
     const w = $('liveWarn');
     if (warns.length) { w.style.display = 'block'; w.innerHTML = warns.join('<br>'); }
     else w.style.display = 'none';
   }
-  ['wallHeight', 'wallWidth', 'hasCeiling', 'hasLeftWall', 'hasRightWall'].forEach(id => {
+  ['wallHeight', 'wallWidth', 'hasCeiling', 'hasLeftWall', 'hasRightWall', 'isSuspended'].forEach(id => {
     $(id).addEventListener('input', () => { updateLivePreview(); refreshContinueGate(); });
     $(id).addEventListener('change', () => { updateLivePreview(); refreshContinueGate(); });
   });
@@ -1350,7 +1396,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     const d = designs[activeDesignIdx];
     if (!d) return;
     const w = parseFloat($('designW').value), h = parseFloat($('designH').value);
-    if (w > 0 && h > 0) d.sizeCm = { w: w * 100, h: h * 100 };
+    if (w > 0 && h > 0) d.sizeCm = { w: toCm(w), h: toCm(h) };
   }
   setupUpload('designUpload', onDesignUploaded);
 
@@ -1441,8 +1487,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     refreshStep3Gate();
     /* In step 3, swap the preview image and re-render with this design's size */
     if ($('step3').classList.contains('active') && designImg) {
-      designWcm = parseFloat($('designW').value) * 100;
-      designHcm = parseFloat($('designH').value) * 100;
+      designWcm = toCm(parseFloat($('designW').value));
+      designHcm = toCm(parseFloat($('designH').value));
       const designEl = $('previewDesign');
       designEl.src = bgOn && designImgNoBg ? designImgNoBg.src : designImg.src;
       designEl.onload = () => renderPreviewStage();
@@ -1544,13 +1590,13 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Step 2 limits & recommendations ─── */
   function updateStep2Limits() {
-    const wH = (parseFloat($('wallHeight').value) || 0) * 100;
-    const wW = (parseFloat($('wallWidth').value) || 0) * 100;
+    const wH = toCm(parseFloat($('wallHeight').value));
+    const wW = toCm(parseFloat($('wallWidth').value));
     const c = $('hasCeiling').checked;
     const l = $('hasLeftWall').checked;
     const r = $('hasRightWall').checked;
     if (wH <= 0 || wW <= 0) return;
-    const pa = computePrintable(wH, wW, c, l, r);
+    const pa = computePrintable(wH, wW, c, l, r, $('isSuspended').checked);
     const maxW = pa.printableW, maxH = pa.printableH;
     const fmtM = cm => (cm / 100).toFixed(2);
     $('limMaxW').textContent = fmtM(maxW) + ' m';
@@ -1612,8 +1658,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   /* Step 3: apply min/max recommendation to the currently active design and re-render */
   function applyRecoOnStep3(useMax) {
     if (!designImg || !designImg.naturalWidth) return;
-    const wH = wallHeightM * 100, wW = wallWidthM * 100;
-    const pa = computePrintable(wH, wW, hasCeiling, hasLeftWall, hasRightWall);
+    const wH = toCm(wallHeightM), wW = toCm(wallWidthM);
+    const pa = computePrintable(wH, wW, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
     const ratio = designImg.naturalWidth / designImg.naturalHeight;
     let recH = pa.printableH, recW = recH * ratio, constrained = 'h';
     if (recW > pa.printableW) { recW = pa.printableW; recH = recW / ratio; constrained = 'w'; }
@@ -1687,14 +1733,15 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     hasCeiling = $('hasCeiling').checked;
     hasLeftWall = $('hasLeftWall').checked;
     hasRightWall = $('hasRightWall').checked;
+    isSuspended = $('isSuspended').checked;
     updateStep2Limits();
     goTo(2);
   });
   $('toStep3').addEventListener('click', () => {
     const dw = parseFloat($('designW').value), dh = parseFloat($('designH').value);
     if (!(dw > 0) || !(dh > 0)) return;
-    designWcm = dw * 100;
-    designHcm = dh * 100;
+    designWcm = toCm(dw);
+    designHcm = toCm(dh);
     goTo(3);
   });
   $('backTo1').addEventListener('click', () => goTo(1));
@@ -1746,8 +1793,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     if (!H) return;
 
     /* Design size as fraction of wall (cm/cm). When bg removed, scale up so subject keeps its size */
-    const wallWcm = wallWidthM * 100;
-    const wallHcm = wallHeightM * 100;
+    const wallWcm = toCm(wallWidthM);
+    const wallHcm = toCm(wallHeightM);
     const sx = bgOn ? bgScaleX : 1;
     const sy = bgOn ? bgScaleY : 1;
     const fW = Math.min(1, (designWcm * sx) / wallWcm);
@@ -1779,13 +1826,14 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
     );
     if (Hd) designEl.style.transform = homographyToMatrix3d(Hd);
 
-    /* Printable zone polygon (in wall (u,v), then projected) */
-    const u_l = (hasLeftWall ? 10 : 0) / wallWcm;
-    const u_r = 1 - (hasRightWall ? (computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall).right) : 0) / wallWcm;
-    const v_t = (hasCeiling ? 35 : 0) / wallHcm;
-    /* For bottom: we use machine printable bottom relative to wall, but cap to 1 */
-    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall);
-    const v_b = Math.min(1, (v_t * wallHcm + pa.printableH) / wallHcm);
+    /* Printable zone polygon (in wall (u,v), then projected).
+       La bande part de 54 cm du sol et monte jusqu'au sommet utile de la machine —
+       qui est presque toujours plus bas que le plafond. */
+    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
+    const u_l = pa.left / wallWcm;
+    const u_r = 1 - pa.right / wallWcm;
+    const v_t = pa.top / wallHcm;
+    const v_b = (pa.top + pa.printableH) / wallHcm;
     const Z = [
       applyH(H, {x:u_l,y:v_t}),
       applyH(H, {x:u_r,y:v_t}),
@@ -1827,20 +1875,22 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
 
   /* ─── Printable area display ─── */
   function renderPrintable() {
-    const r = computePrintable(wallHeightM * 100, wallWidthM * 100, hasCeiling, hasLeftWall, hasRightWall);
-    const maxBadge = r.isMax ? '<span class="badge-max">max</span>' : '';
-    $('paConfig').innerHTML = r.selected.name + maxBadge;
-    $('paTop').textContent = r.top + ' cm';
-    $('paBottom').textContent = r.bottom + ' cm';
-    $('paLeft').textContent = r.left + ' cm';
-    $('paRight').textContent = r.right + ' cm' + (r.isMax && hasRightWall ? ' (stabilisateur)' : '');
+    const r = computePrintable(toCm(wallHeightM), toCm(wallWidthM), hasCeiling, hasLeftWall, hasRightWall, isSuspended);
+    const cm = v => (Math.round(v * 10) / 10) + ' cm';
+    const maxBadge = r.isMax ? ' <span class="badge-max">max</span>' : '';
+    $('paConfig').innerHTML = r.configName + maxBadge;
+    $('paTop').textContent = cm(r.top);
+    $('paBottom').textContent = cm(r.bottom);
+    $('paLeft').textContent = cm(r.left);
+    $('paRight').textContent = cm(r.right) + (r.right === SIDE_FAR_WIDE ? ' (stabilisateur)' : '');
     $('paDims').textContent = (r.printableW/100).toFixed(2) + ' x ' + (r.printableH/100).toFixed(2) + ' m';
     $('paArea').textContent = r.area.toFixed(2) + ' m²';
     const warn = $('paWarn');
     const warnings = [];
-    if (r.tooShort) warnings.push('Le mur est trop bas pour la plus petite configuration machine.');
-    if (wallHeightM * 100 > MAX_HC && hasCeiling) warnings.push('Mur plus haut que la machine max — la zone imprimable est limitee a la hauteur machine.');
-    if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
+    if (r.suspended) warnings.push('Panneau suspendu : toute la surface est imprimable, aucune contrainte machine.');
+    else if (r.tooShort) warnings.push('Impression impossible : il faut au moins ' + MIN_WALL_LABEL + ', la hauteur du plus petit assemblage.');
+    else if (toCm(wallHeightM) > MAX_TOTAL_H) warnings.push('Mur plus haut que la machine — la zone imprimable est limitee a la hauteur machine.');
+    else if (r.printableH <= 0 || r.printableW <= 0) warnings.push('Aucune surface imprimable avec ces marges.');
     if (warnings.length) { warn.style.display = 'block'; warn.innerHTML = warnings.join('<br>'); }
     else warn.style.display = 'none';
   }
@@ -1892,8 +1942,8 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
   function updateInfo() {
     $('infoDims').textContent = (designWcm/100).toFixed(2) + ' x ' + (designHcm/100).toFixed(2) + ' m';
     $('infoArea').textContent = ((designWcm * designHcm) / 10000).toFixed(2) + ' m2';
-    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
-    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall);
+    const wallWcm = toCm(wallWidthM), wallHcm = toCm(wallHeightM);
+    const pa = computePrintable(wallHcm, wallWcm, hasCeiling, hasLeftWall, hasRightWall, isSuspended);
     const xCm = designU * wallWcm - designWcm/2;
     const yCm = designV * wallHcm - designHcm/2;
     const outOfZone = xCm < pa.left || yCm < pa.top ||
@@ -2069,7 +2119,7 @@ h1,h2,h3,h4 { font-weight: 700; color: var(--midnight); }
       [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
       wallQuadNat
     );
-    const wallWcm = wallWidthM * 100, wallHcm = wallHeightM * 100;
+    const wallWcm = toCm(wallWidthM), wallHcm = toCm(wallHeightM);
     const sxd = bgOn ? bgScaleX : 1, syd = bgOn ? bgScaleY : 1;
     const fW = Math.min(1, (designWcm * sxd) / wallWcm), fH = Math.min(1, (designHcm * syd) / wallHcm);
     const u1 = designU - fW/2, u2 = designU + fW/2;

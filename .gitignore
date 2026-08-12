@@ -7,3 +7,7 @@ node_modules/
 test-*.jpg
 test-*.png
 SESSIONS.md
+
+# Calculateur bati sur le modele machine perime (CSV mai 2025) — remplace par
+# frais impression_v3.xlsx. Retire du suivi le 12/08/2026, recuperable dans l historique.
+Printable_Area_Calculator_v3.xlsx
