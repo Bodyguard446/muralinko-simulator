@@ -4,6 +4,13 @@ Newest at top. Each entry: what was discussed, what shipped, what is next.
 
 ---
 
+## 2026-08-12 — MENAGE FICHIERS
+9 fichiers perimes deplaces (aucune suppression), chaque dossier avec un LISEZ-MOI expliquant pourquoi.
+- `D:\Code\_obsolete\muralinko-calculateurs-2026-08-12\` : les **5** calculateurs a formule continue (`Printable_Area_Calculator_Form_v2`, `Printable_Area_Calculator` aux formules cassees, `Printable_Area_Calculator_48cm_Model` en double, `Printable_Area_Form` — trouve seulement au ratissage final, ma recherche initiale par mots-cles l'avait rate), le modele machine de mai 2025 (`machine_height_combinations` .xlsx + .csv) et mon `Printable_Area_Calculator_v3` bati dessus.
+- `OneDrive\Downloads\_obsolete\` : `frais impression_v2.xlsx` (conserve dans OneDrive pour garder la sauvegarde cloud, il porte l'historique du Claude Log) + sa copie AutoRecovered.
+**Non touche, hors perimetre :** `C:\Users\c_kef\Downloads\Spreadsheets\frais impression.xlsx` (mars 2025) — ce n'est pas un calculateur de surface mais une **grille tarifaire** (onglets Sheet1, Sheet2, Grille tarifaire). A trancher separement.
+**Restent en service :** `OneDrive\Downloads\frais impression_v3.xlsx` et le simulateur en prod.
+
 ## 2026-08-12 — MERGE EN PROD
 `dev` → `main` merge et pousse (`e4de1db`, merge commit — pas de fast-forward possible, `main` portait 3 commits absents de `dev`). Cloudflare a redeploye. **Verifie en direct sur `simulateur.muralinko.workers.dev`** (avec cache-buster, la premiere requete servait encore l'ancienne version) : case « Panneau suspendu » presente, et 6 scenarios conformes a l'Excel — 250x834 → 12,57 m² (Corps + Barre 3 + Barre 11), 254x830 → 13,09 m² (Corps + Barre 7 + Barre 4), 220x400 → 5,28 m², 205x400 → 4,88 m² (le palier que le bug d'arrondi ratait), 300x500 → 9,33 m² (bascule marge droite 60), suspendu 125x300 → 3,75 m². Zero erreur console.
 
