@@ -4,7 +4,22 @@ Newest at top. Each entry: what was discussed, what shipped, what is next.
 
 ---
 
-## 2026-08-12
+## 2026-08-12 — CORRECTION (fin de session)
+**Le modele decrit dans l'entree ci-dessous etait PERIME.** `machine_height_combinations.csv` date de mai 2025 ; le modele courant vit dans **`frais impression_v2.xlsx`** (OneDrive\Downloads, 6 onglets, refait en juin 2026), que je n'ai trouve qu'en cherchant une ligne « suspended » signalee par Chokri. Erreur de methode : j'ai pris le CSV pour source de verite sans verifier s'il existait plus recent, et j'ai lu « le dernier V2 » comme `Printable_Area_Calculator_Form_v2.xlsx` parce que le nom collait.
+
+**Le vrai modele :** corps **125** (pas 145) ; intermediaires empilables Barre 1/2 **40** (pas 39,2), 3 = 100, 5 = 10, 6 = 20, 7 = 30, 8 = 40, 9 = 50 ; **4 terminales** dont une obligatoire — Barre 4 = 97,5, Barre 10 = 10, Barre 11 = 20, Barre 12 = 30 ; total plafonne a **400 cm** ; zone morte au sol **48** (pas 54) ; offset plafond 35. 829 assemblages valides → **45 hauteurs distinctes de 135 a 395 cm**. Selection = plus haute hauteur <= hauteur du mur, puis `-48 -35 si plafond`.
+
+**Consequences :** le plancher machine est **1,35 m** et non 2,43 m — le simulateur refusait des murs parfaitement imprimables (mur 220 sous plafond = **132 cm**, pas « impossible » ; mur 200 = 112 cm). La « regle commerciale » notee plus bas est donc fausse, ainsi que tout le tableau d'ecarts de l'entree precedente. Les barres courtes « a garder pour plus tard » etaient deja dans le fichier.
+
+**Refait :** `CONFIGS` genere depuis le catalogue exactement comme le classeur enumere (1 terminale + sous-ensemble des intermediaires, coupe a 400, dedoublonne par hauteur en gardant le moins de barres) — reproduit les 45 hauteurs ligne par ligne. **Ajout du mode panneau suspendu**, absent du simulateur : panneau detache du mur → aucune barre, aucune deduction, toute la surface imprimable ; les 3 cases plafond/murs se desactivent. Verifie sur les saisies memes du classeur (254 x 830, plafond + 2 murs) → **169,5 x 772 cm, 13,09 m², « Corps + Barre 7 + Barre 4 »**, identique a ses cellules ; suspendu 125 x 300 → 3,75 m², conforme a son journal.
+
+**Livre :** `frais impression_v3.xlsx` (a cote du v2 dans OneDrive\Downloads) — copie du v2 avec les libelles **B6/B7 remis a l'endroit** (ils annoncaient Right/Left alors que B6 retire 10 = gauche et B7 retire 48/65 = droite ; formules inchangees) + une ligne 16 ajoutee a l'onglet Claude Log. Non versionne : ce classeur contient les frais d'impression. `Printable_Area_Calculator_v3.xlsx` **retire du depot** — bati sur le modele perime, donc dangereux a laisser trainer (recuperable dans l'historique git).
+
+**Ouvert, a trancher par Chokri :** (1) zone morte au sol **48** (formule du classeur, retenue) **vs 54** (schema de l'onglet Technical + ancien CSV) ; (2) marge droite **65 si mur >= 300** (formule, retenue) **vs 60** (schema Technical + ce que Chokri m'a dit le matin meme). Les deux sont des constantes nommees, une ligne a changer dans chaque outil.
+
+---
+
+## 2026-08-12 (entree initiale — modele perime, conservee pour la trace)
 **Discussed:** Ecart entre le calculateur Excel « classique » et le simulateur sur la surface imprimable. Audit des 4 fichiers Excel trouves (`Printable_Area_Calculator*.xlsx`, dont un modele 48 cm et un fichier aux formules cassees) + du CSV machine. Redefinition du modele machine avec Chokri.
 **Shipped:**
 - **Diagnostic** : le simulateur soustrayait les marges **deux fois**. Les colonnes 3/4 de `machine_height_combinations.csv` ont deja le -54 (et le -35) deduits, or `CONFIGS` stockait ces valeurs et `computePrintable` re-soustrayait 35+54. Deuxieme erreur qui la masquait : le filtre comparait la hauteur d'impression a la hauteur du mur au lieu de la hauteur totale machine.
